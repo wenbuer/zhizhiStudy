@@ -376,6 +376,17 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
+    /// 已经学过的单元：学习页把它们折在待学清单最底下，点开才取（limit 传 -1 表示全部）。
+    pub fn learned_cards(&self, limit: i64) -> Result<Vec<Card>> {
+        let sql = format!(
+            "{} WHERE c.learned = 1 ORDER BY c.material_id ASC, c.seq ASC LIMIT ?1",
+            Self::CARD_SELECT
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map(params![limit], |r| Self::map_card(r))?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
     pub fn mark_learned(&self, id: i64, learned: bool) -> Result<()> {
         self.conn.execute("UPDATE cards SET learned = ?2 WHERE id = ?1", params![id, learned as i64])?;
         Ok(())
@@ -970,6 +981,21 @@ mod tests {
         let today = store.plan_today(plan).unwrap().unwrap();
         assert!(today.day_units.is_empty());
         assert_eq!(today.remaining_units, 0);
+    }
+
+    /// 学过的单元离开待学队列后，仍能在已学清单里原样找回来。
+    #[test]
+    fn learned_cards_keep_what_left_the_learning_queue() {
+        let store = temp_store("learned-archive");
+        let material = store
+            .insert_material("材料", "in.md", "md", 10, "正文", "2026-10-01")
+            .unwrap();
+        store.insert_cards(material, &[unit("章节1-1"), unit("章节1-2")], "2026-10-01").unwrap();
+        let cards = store.list_cards(Some(material)).unwrap();
+        store.mark_learned(cards[0].id, true).unwrap();
+
+        assert_eq!(titles(&store.learning_cards(60).unwrap()), ["章节1-2"]);
+        assert_eq!(titles(&store.learned_cards(-1).unwrap()), ["章节1-1"]);
     }
 
     fn titles(cards: &[Card]) -> Vec<&str> {

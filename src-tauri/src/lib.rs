@@ -422,6 +422,12 @@ fn mark_learned(state: State<'_, AppState>, card_id: i64, learned: bool) -> Resu
     state.store.lock().unwrap().mark_learned(card_id, learned).map_err(err_str)
 }
 
+/// 已学过的单元：学习页底部的折叠区点开时才取，别让待学队列每次都背上全部正文。
+#[tauri::command]
+fn learned_cards(state: State<'_, AppState>, limit: Option<i64>) -> Result<Vec<Card>, String> {
+    state.store.lock().unwrap().learned_cards(limit.unwrap_or(-1)).map_err(err_str)
+}
+
 // ── 学习与复习 ───────────────────────────────────────────
 
 #[derive(Serialize)]
@@ -1363,6 +1369,7 @@ pub fn run() {
             delete_material,
             list_cards,
             mark_learned,
+            learned_cards,
             today_queue,
             grade_answer,
             submit_review,

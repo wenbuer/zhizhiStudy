@@ -24,6 +24,13 @@ const state = {
   learnQuery: '',
   learnMaterial: null,
   learnCardId: null,
+  /// 已学单元：折叠区展开或切到「只看已学」时才去后端取
+  learned: null,
+  learnedLoading: null,
+  learnedOpen: false,
+  learnedOnly: false,
+  /// 学习页当前清单（待学 + 已加载的已学），行号索引都对着它
+  learnList: [],
   practice: null,
   reading: false,
 };
@@ -93,6 +100,7 @@ function switchView(name) {
 /* ── 数据加载 ─────────────────────────────── */
 
 async function refresh() {
+  const learnedBefore = state.queue.stats ? state.queue.stats.learned : null;
   const results = await Promise.all([
     call('app_info'),
     call('today_queue'),
@@ -106,6 +114,8 @@ async function refresh() {
   state.recent = results[3];
   state.exams = results[4];
   state.cards = state.queue.fresh.concat(state.queue.due);
+  // 学完 / 复习让「已学」数量变了，已学清单的缓存跟着作废，下次展开重新取
+  if (learnedBefore !== state.queue.stats.learned) state.learned = null;
   renderChrome();
   renderToday();
   renderMaterials();
@@ -166,6 +176,7 @@ async function openLearnUnit(id) {
   state.learnIndex = index;
   state.learnMaterial = null;
   state.learnQuery = '';
+  state.learnedOnly = false;
   switchView('learn');
   renderLearn();
 }
@@ -629,6 +640,76 @@ function setReading(on) {
   if (state.view === 'learn') renderLearn();
 }
 
+/* 已学单元：折叠区展开或切到「只看已学」时才去后端取正文，待学队列不背这份重量 */
+function loadLearned() {
+  if (state.learned) return Promise.resolve(state.learned);
+  if (state.learnedLoading) return state.learnedLoading;
+  state.learnedLoading = call('learned_cards', {})
+    .then((cards) => {
+      state.learned = cards || [];
+      state.learnedLoading = null;
+      if (state.view === 'learn') renderLearn();
+      return state.learned;
+    })
+    .catch(() => {
+      // 取失败也落个空清单，否则每次重画都会再打一遍接口
+      state.learned = [];
+      state.learnedLoading = null;
+      if (state.view === 'learn') renderLearn();
+      return state.learned;
+    });
+  return state.learnedLoading;
+}
+
+function groupBySection(cards) {
+  const groups = [];
+  const index = {};
+  cards.forEach((card) => {
+    const key = card.section || '未分类';
+    if (!index[key]) { index[key] = { name: key, items: [] }; groups.push(index[key]); }
+    index[key].items.push(card);
+  });
+  return groups;
+}
+
+function unitRowHtml(card, activeId) {
+  return '<div class="row' + (card.id === activeId ? ' is-active' : '') +
+    '" data-learn="' + card.id + '">' +
+    '<div class="row-main"><div class="row-title">' + escapeHtml(card.title) +
+    '</div></div></div>';
+}
+
+function unitGroupHtml(group, activeId) {
+  const folded = state.collapsed.indexOf(group.name) >= 0;
+  return '<div class="unit-group">' +
+    '<div class="unit-group-title" data-section="' + escapeHtml(group.name) + '">' +
+    '<span><span class="chev">' + (folded ? '▶' : '▼') + '</span>' +
+    escapeHtml(group.name) + '</span><span>' + group.items.length + '</span></div>' +
+    (folded ? '' : group.items.map((card) => unitRowHtml(card, activeId)).join('')) +
+    '</div>';
+}
+
+/* 已学单元折叠区：默认收起，展开后按章节列在待学清单最底下 */
+function learnedFoldHtml(learned, activeId) {
+  const folded = !state.learnedOpen;
+  const filtered = state.learnMaterial || (state.learnQuery || '').trim();
+  // 没取回来之前先借统计里的总数（按素材库/搜索筛过就先不显示数字，免得对不上）
+  const total = learned ? learned.length
+    : filtered ? '' : ((state.queue.stats || {}).learned || 0);
+  let body = '';
+  if (!folded) {
+    if (!learned) body = '<div class="empty">正在读取已学单元…</div>';
+    else if (!learned.length) body = '<div class="empty">没有匹配的已学单元</div>';
+    else body = groupBySection(learned).map((group) =>
+      '<div class="unit-group-sub">' + escapeHtml(group.name) + '</div>' +
+      group.items.map((card) => unitRowHtml(card, activeId)).join('')).join('');
+  }
+  return '<div class="unit-group unit-group-learned">' +
+    '<div class="unit-group-title is-learned" data-learned-fold>' +
+    '<span><span class="chev">' + (folded ? '▶' : '▼') + '</span>已学过的单元</span>' +
+    '<span>' + total + '</span></div>' + body + '</div>';
+}
+
 function renderLearn() {
   // 素材库切换器
   const select = el('learnMaterial');
@@ -643,49 +724,53 @@ function renderLearn() {
     select.value = state.learnMaterial ? String(state.learnMaterial) : '';
   }
 
-  const query = (state.learnQuery || '').trim().toLowerCase();
-  let fresh = state.queue.fresh || [];
-  if (state.learnMaterial) {
-    fresh = fresh.filter((card) => card.materialId === state.learnMaterial);
-  }
-  if (query) {
-    fresh = fresh.filter((card) =>
-      (card.title || '').toLowerCase().includes(query) ||
-      (card.section || '').toLowerCase().includes(query));
+  const filter = el('learnFilter');
+  if (filter) {
+    filter.classList.toggle('is-active', !!state.learnedOnly);
+    filter.setAttribute('aria-pressed', state.learnedOnly ? 'true' : 'false');
   }
 
-  if (!fresh.length) {
-    el('learnQueue').innerHTML = '<div class="empty">' +
-      (query ? '没有匹配「' + escapeHtml(state.learnQuery) + '」的单元' : '这里还没有待学单元') + '</div>';
-    el('learnCard').innerHTML = '<div class="empty">导入材料后，这里会按章节列出全部学习单元</div>';
+  const query = (state.learnQuery || '').trim().toLowerCase();
+  const matches = (card) =>
+    (!state.learnMaterial || card.materialId === state.learnMaterial) &&
+    (!query ||
+      (card.title || '').toLowerCase().includes(query) ||
+      (card.section || '').toLowerCase().includes(query));
+
+  const fresh = (state.queue.fresh || []).filter(matches);
+  const learned = state.learned ? state.learned.filter(matches) : null;
+
+  // 「只看已学」第一次点进来时正文还在后端，取回来再画
+  if (state.learnedOnly && !state.learned) loadLearned();
+
+  const list = state.learnedOnly ? (learned || []) : fresh.concat(learned || []);
+  state.learnList = list;
+  const current = list[state.learnIndex] || list[0];
+  const activeId = current ? current.id : null;
+
+  if (state.learnedOnly) {
+    el('learnQueue').innerHTML = learned
+      ? (list.length
+          ? groupBySection(list).map((group) => unitGroupHtml(group, activeId)).join('')
+          : '<div class="empty">' +
+            (query ? '没有匹配「' + escapeHtml(state.learnQuery) + '」的已学单元' : '还没有学过的单元') + '</div>')
+      : '<div class="empty">正在读取已学单元…</div>';
+  } else {
+    el('learnQueue').innerHTML =
+      (fresh.length
+        ? groupBySection(fresh).map((group) => unitGroupHtml(group, activeId)).join('')
+        : '<div class="empty">' +
+          (query ? '没有匹配「' + escapeHtml(state.learnQuery) + '」的待学单元' : '待学单元已经学完了') + '</div>') +
+      learnedFoldHtml(learned, activeId);
+  }
+
+  if (!current) {
+    el('learnCard').innerHTML = '<div class="empty">' +
+      (state.learnedOnly ? '还没有可读的已学单元' : '导入材料后，这里会按章节列出全部学习单元') + '</div>';
     state.learnCardId = null;
     return;
   }
 
-  // 按章节分组，章节标题可点开收起
-  const groups = [];
-  const index = {};
-  fresh.forEach((card, position) => {
-    const key = card.section || '未分类';
-    if (!index[key]) { index[key] = { name: key, items: [] }; groups.push(index[key]); }
-    index[key].items.push({ card: card, position: position });
-  });
-
-  el('learnQueue').innerHTML = groups.map((group) => {
-    const folded = state.collapsed.indexOf(group.name) >= 0;
-    return '<div class="unit-group">' +
-      '<div class="unit-group-title" data-section="' + escapeHtml(group.name) + '">' +
-      '<span><span class="chev">' + (folded ? '▶' : '▼') + '</span>' +
-      escapeHtml(group.name) + '</span><span>' + group.items.length + '</span></div>' +
-      (folded ? '' : group.items.map((entry) =>
-        '<div class="row' + (entry.position === state.learnIndex ? ' is-active' : '') +
-        '" data-learn="' + entry.card.id + '">' +
-        '<div class="row-main"><div class="row-title">' + escapeHtml(entry.card.title) +
-        '</div></div></div>').join('')) +
-      '</div>';
-  }).join('');
-
-  const current = fresh[state.learnIndex] || fresh[0];
   const points = (current.keyPoints || []).length
     ? '<div class="unit-points"><div class="grade-sub">读完检查这几条</div><ul class="grade-list">' +
       current.keyPoints.map((point) => '<li>' + escapeHtml(point) + '</li>').join('') + '</ul></div>'
@@ -707,7 +792,8 @@ function renderLearn() {
     '<div class="card-head">' +
       '<div class="card-head-text">' +
         '<div class="card-meta">' + escapeHtml(current.section || '') + ' · ' +
-        escapeHtml(current.materialTitle) + ' · 第 ' + current.seq + ' 单元</div>' +
+        escapeHtml(current.materialTitle) + ' · 第 ' + current.seq + ' 单元' +
+        (current.learned ? ' · 已学' : '') + '</div>' +
         '<h3 class="card-title">' + escapeHtml(current.title) + '</h3>' +
       '</div>' +
       '<button class="btn btn-slim card-full" data-action="learn-full" title="' +
@@ -718,7 +804,8 @@ function renderLearn() {
       renderMarkdown(stripLeadTitle(current.content || current.summary, current.title)) + '</div>' +
     points + quizNotes + quiz +
     '<div class="card-actions">' +
-    '<button class="btn btn-primary" data-action="learn-to-exam" data-id="' + current.id + '">学完去练习</button>' +
+    '<button class="btn btn-primary" data-action="learn-to-exam" data-id="' + current.id + '">' +
+    (current.learned ? '去练习' : '学完去练习') + '</button>' +
     '<button class="btn" data-action="learn-next">下一个单元</button></div>';
 
   // 换单元就把内容区滚回顶部：每个章节各看各的，不沿用上一个单元的滚动位置
@@ -1478,7 +1565,7 @@ function bind() {
     }
     if (row && !event.target.closest('button')) { loadExamCard(Number(row.dataset.card), row.dataset.mode); return; }
     if (learnRow) {
-      const idx = (state.queue.fresh || []).findIndex((c) => c.id === Number(learnRow.dataset.learn));
+      const idx = (state.learnList || []).findIndex((c) => c.id === Number(learnRow.dataset.learn));
       if (idx >= 0) { state.learnIndex = idx; renderLearn(); }
       return;
     }
@@ -1528,14 +1615,18 @@ function bind() {
       } else if (name === 'go-import') {
         switchView('import');
       } else if (name === 'learn-next') {
-        state.learnIndex = Math.min(state.learnIndex + 1, (state.queue.fresh || []).length - 1);
-        renderLearn();
+        // 「只看已学」就在已学清单里翻页，平时跳过折叠区的已学单元
+        const list = state.learnList || [];
+        const after = list.slice(Math.max(0, state.learnIndex) + 1);
+        const next = state.learnedOnly ? after[0] : after.find((card) => !card.learned);
+        if (next) { state.learnIndex = list.indexOf(next); renderLearn(); }
       } else if (name === 'learn-full') {
         setReading(!state.reading);
       } else if (name === 'plan-study') {
         const planId = Number(action.dataset.id);
         const current = await call('plan_today', { planId: planId });
         const first = current && current.dayUnits.find((card) => !card.learned);
+        state.learnedOnly = false;
         switchView('learn');
         if (first) {
           const at = (state.queue.fresh || []).findIndex((card) => card.id === first.id);
@@ -1610,11 +1701,24 @@ function bind() {
   });
 
   el('learnQueue').addEventListener('click', (event) => {
+    if (event.target.closest('[data-learned-fold]')) {
+      state.learnedOpen = !state.learnedOpen;
+      if (state.learnedOpen && !state.learned) loadLearned();
+      renderLearn();
+      return;
+    }
     const header = event.target.closest('.unit-group-title');
-    if (!header) return;
+    if (!header || !header.dataset.section) return;
     const name = header.dataset.section;
     const at = state.collapsed.indexOf(name);
     if (at >= 0) state.collapsed.splice(at, 1); else state.collapsed.push(name);
+    renderLearn();
+  });
+
+  el('learnFilter').addEventListener('click', () => {
+    state.learnedOnly = !state.learnedOnly;
+    state.learnIndex = 0;
+    if (state.learnedOnly && !state.learned) loadLearned();
     renderLearn();
   });
 

@@ -487,7 +487,14 @@ input::placeholder, textarea::placeholder { color: var(--fg-dim); }
 /* 标签和控件同一行 */
 .study-tools .tool-field { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .study-tools .tool-field:first-child { flex: 0 0 300px; }
-.study-tools .tool-field:last-child { flex: 1 1 auto; }
+.study-tools .tool-grow { flex: 1 1 auto; }
+.study-tools .tool-filter { flex: none; }
+.study-tools .tool-filter.is-active {
+  border-color: var(--accent);
+  background: #f4fbf8;
+  color: var(--accent);
+  font-weight: 600;
+}
 .study-tools .tool-label {
   flex: none;
   margin-bottom: 0;
@@ -645,6 +652,21 @@ body.is-reading .study-card > * {
   color: var(--fg-dim);
 }
 .unit-group .row { margin-bottom: 6px; }
+
+/* 学习页：已学单元折叠在最底下，展开后按章节列 */
+.unit-group-learned {
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line-strong);
+}
+.unit-group-learned .is-learned { font-size: 12px; color: var(--fg-muted); }
+.unit-group-learned .row { opacity: 0.88; }
+.unit-group-sub {
+  margin: 10px 0 4px;
+  padding: 0 2px;
+  font-size: 11px;
+  color: var(--fg-dim);
+}
 
 /* 学习页：mermaid 流程图。画不出来时（is-plain）保留源码，别让它变成空白块 */
 .mermaid {
