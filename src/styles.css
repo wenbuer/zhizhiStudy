@@ -1060,6 +1060,7 @@ body.is-reading .study-card > * {
 }
 
 .trans-pop-head {
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1083,6 +1084,8 @@ body.is-reading .study-card > * {
 .trans-close svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 
 .trans-body {
+  flex: 1 1 auto;
+  min-height: 0;
   padding: 10px 12px 12px;
   font-size: 13.5px;
   line-height: 1.7;
