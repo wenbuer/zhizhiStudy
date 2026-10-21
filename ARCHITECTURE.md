@@ -54,6 +54,12 @@
 `due` 是到期。学习页的主清单消费 `fresh`，已学单元另走 `learned_cards` 折叠在清单最底下；
 考试页只消费 `due`，不会出现「没学过就被考」。
 
+## 划词翻译
+
+学习页正文里选中文字，前端浮出「翻译」按钮，点击才调用 `translate_text`：
+请求带 `thinking: {type: "disabled"}` 关闭思考、30 秒超时、最多 1200 字原文，
+接口不认这个字段时去掉重发。开关存在 `config.json` 的 `translate`，默认关闭。
+
 ## 记忆曲线
 
 `srs.rs` 把评分交给 FSRS：

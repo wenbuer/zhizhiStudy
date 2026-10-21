@@ -49,6 +49,8 @@ struct AppInfo {
     llm_ready: bool,
     model: String,
     version: String,
+    /// 划词翻译是否开启：前端据此决定选区后要不要浮出按钮
+    translate: bool,
 }
 
 fn app_info_of(state: &AppState) -> AppInfo {
@@ -58,6 +60,7 @@ fn app_info_of(state: &AppState) -> AppInfo {
         llm_ready: llm.ready(),
         model: llm.model_name().to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
+        translate: state.settings.read().unwrap().translate,
     }
 }
 
@@ -325,6 +328,30 @@ fn set_notify(state: State<'_, AppState>, enabled: bool) -> Result<bool, String>
     settings.notify = enabled;
     settings.save(&state.settings_path).map_err(err_str)?;
     Ok(settings.notify)
+}
+
+/// 划词翻译开关：改动立刻落盘，不用点「保存设置」。
+#[tauri::command]
+fn set_translate(state: State<'_, AppState>, enabled: bool) -> Result<bool, String> {
+    let mut settings = state.settings.write().unwrap();
+    settings.translate = enabled;
+    settings.save(&state.settings_path).map_err(err_str)?;
+    Ok(settings.translate)
+}
+
+/// 划词翻译：选中一小段文字，让模型直译。关闭思考、限时 30 秒，求快不求长。
+#[tauri::command]
+async fn translate_text(state: State<'_, AppState>, text: String) -> Result<String, String> {
+    let settings = state.settings.read().unwrap().clone();
+    if !settings.translate {
+        return Err("划词翻译没有开启：去「设置」页打开它".into());
+    }
+    let picked: String = text.trim().chars().take(1200).collect();
+    if picked.is_empty() {
+        return Err("没有选中文字".into());
+    }
+    let llm = state.llm.read().unwrap().clone();
+    llm.translate(&picked).await.map_err(err_str)
 }
 
 // ── 学习计划 ─────────────────────────────────────────────
@@ -1352,6 +1379,8 @@ pub fn run() {
             autostart_on,
             set_autostart,
             set_notify,
+            set_translate,
+            translate_text,
             create_exam,
             create_practice,
             exam_step,

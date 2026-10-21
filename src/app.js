@@ -33,6 +33,9 @@ const state = {
   learnList: [],
   practice: null,
   reading: false,
+  /// 划词翻译：当前选中的文字与选区位置（fixed 定位用）
+  transText: '',
+  transRect: null,
 };
 
 const VIEW_TITLES = {
@@ -86,6 +89,7 @@ function switchView(name) {
   });
   el('viewTitle').textContent = VIEW_TITLES[name] || name;
   if (name !== 'learn' && state.reading) setReading(false);
+  if (name !== 'learn') { hideTransTrigger(); closeTransPop(); }
   if (name === 'insight') renderGraph();
   if (name === 'quiz') renderQuiz().catch((error) => toast('测验页加载失败：' + String(error), 'bad'));
   if (name === 'exam') {
@@ -711,6 +715,10 @@ function learnedFoldHtml(learned, activeId) {
 }
 
 function renderLearn() {
+  // 换单元、换筛选都会重画正文，浮着的翻译按钮和译文卡片一起收掉
+  hideTransTrigger();
+  closeTransPop();
+
   // 素材库切换器
   const select = el('learnMaterial');
   if (select) {
@@ -814,6 +822,100 @@ function renderLearn() {
     el('learnCard').scrollTop = 0;
   }
   renderFlowcharts(el('learnCard'));
+}
+
+/* ── 划词翻译 ─────────────────────────────── */
+
+function translateOn() {
+  return !!(state.info && state.info.translate);
+}
+
+function hideTransTrigger() {
+  const trigger = el('transTrigger');
+  if (trigger) trigger.hidden = true;
+  state.transText = '';
+  state.transRect = null;
+}
+
+function closeTransPop() {
+  const pop = el('transPop');
+  if (pop) pop.hidden = true;
+  const body = el('transBody');
+  if (body) { body.textContent = ''; body.className = 'trans-body'; }
+}
+
+/* 浮动元素定位：水平跟着选区并收在视口内，垂直优先放在选区上方 */
+function placeAbove(node, rect, gap) {
+  node.hidden = false;
+  const box = node.getBoundingClientRect();
+  const width = box.width || 80;
+  const height = box.height || 30;
+  const left = Math.max(8, Math.min(rect.left + rect.width / 2 - width / 2,
+    window.innerWidth - width - 8));
+  let top = rect.top - height - gap;
+  if (top < 8) top = Math.min(window.innerHeight - height - 8, rect.bottom + gap);
+  node.style.left = Math.round(left) + 'px';
+  node.style.top = Math.round(Math.max(8, top)) + 'px';
+}
+
+function placeTransPop(rect) {
+  const pop = el('transPop');
+  pop.hidden = false;
+  const box = pop.getBoundingClientRect();
+  const width = box.width || 360;
+  const height = box.height || 120;
+  const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+  let top = rect.bottom + 8;
+  if (top + height > window.innerHeight - 8) top = rect.top - height - 8;
+  pop.style.left = Math.round(left) + 'px';
+  pop.style.top = Math.round(Math.max(8, top)) + 'px';
+}
+
+/* 只认学习正文里的选区：标题、侧栏、按钮区都不弹翻译 */
+function selectionInLearnCard() {
+  const card = el('learnCard');
+  const body = card && card.querySelector('.unit-body');
+  const selection = window.getSelection();
+  if (!body || !selection || selection.isCollapsed || !selection.rangeCount) return null;
+  const range = selection.getRangeAt(0);
+  if (!body.contains(range.commonAncestorContainer)) return null;
+  const text = selection.toString().replace(/\s+/g, ' ').trim();
+  if (!text) return null;
+  const rects = range.getClientRects();
+  const rect = rects.length ? rects[rects.length - 1] : range.getBoundingClientRect();
+  return { text: text, rect: rect };
+}
+
+function showTransTrigger() {
+  if (!translateOn()) { hideTransTrigger(); return; }
+  const picked = selectionInLearnCard();
+  // 整篇选中的按下不弹：划词翻译只服务一小段
+  if (!picked || picked.text.length > 1200) { hideTransTrigger(); return; }
+  state.transText = picked.text;
+  state.transRect = picked.rect;
+  placeAbove(el('transTrigger'), picked.rect, 8);
+}
+
+async function requestTranslation() {
+  const text = state.transText;
+  if (!text) return;
+  const rect = state.transRect || { left: 0, top: 0, right: 0, bottom: 0, width: 0 };
+  hideTransTrigger();
+  const body = el('transBody');
+  body.textContent = '翻译中…';
+  body.className = 'trans-body is-busy';
+  placeTransPop(rect);
+  try {
+    const result = await invoke('translate_text', { text: text });
+    body.className = 'trans-body';
+    body.textContent = result || '（模型没有返回译文）';
+  } catch (error) {
+    body.className = 'trans-body is-bad';
+    body.textContent = '翻译失败：' +
+      (typeof error === 'string' ? error : (error && error.message) || String(error));
+  }
+  // 译文长短会改变卡片高度，出结果后贴着选区再放一次
+  placeTransPop(rect);
 }
 
 /* ── 考试 ─────────────────────────────────── */
@@ -1421,6 +1523,7 @@ async function loadSettings() {
   setProxyMode(s.proxyMode || 'auto');
   el('dataDir').textContent = (state.info && state.info.dataDir) || '';
   setSeg('#notifySeg', 'notify', s.notify !== false);
+  setSeg('#translateSeg', 'translate', s.translate === true);
   await loadAutostart();
 }
 
@@ -1462,6 +1565,9 @@ function collectSettings() {
     apiBase: el('sApiBase').value.trim(),
     apiKey: el('sApiKey').value.trim(),
     model: el('sModel').value.trim(),
+    // notify / translate 是即时开关，不跟着表单提交；这里带上当前值，免得保存接口时被重置
+    notify: !(state.settings && state.settings.notify === false),
+    translate: !!(state.settings && state.settings.translate),
     proxyMode: currentProxyMode(),
     proxyUrl: el('sProxyUrl').value.trim(),
     noProxy: el('sNoProxy').value.trim(),
@@ -1734,6 +1840,24 @@ function bind() {
     renderLearn();
   });
 
+  // 划词翻译：正文里松开鼠标或键盘扩选后浮出「翻译」按钮
+  el('learnCard').addEventListener('mouseup', showTransTrigger);
+  el('learnCard').addEventListener('keyup', (event) => {
+    if (event.shiftKey || event.key === 'Shift') showTransTrigger();
+  });
+  el('learnCard').addEventListener('mousedown', hideTransTrigger);
+  el('learnCard').addEventListener('scroll', () => { hideTransTrigger(); closeTransPop(); });
+
+  el('transTrigger').addEventListener('mousedown', (event) => event.preventDefault());
+  el('transTrigger').addEventListener('click', requestTranslation);
+  el('transClose').addEventListener('click', closeTransPop);
+
+  document.addEventListener('mousedown', (event) => {
+    if (event.target.closest('#transTrigger') || event.target.closest('#transPop')) return;
+    hideTransTrigger();
+    closeTransPop();
+  });
+
   el('gradeBtn').addEventListener('click', submitGrade);
   el('rateGrid').addEventListener('click', (event) => {
     const button = event.target.closest('[data-rating]');
@@ -1759,6 +1883,22 @@ function bind() {
   el('proxyMode').addEventListener('click', (event) => {
     const button = event.target.closest('.seg-item');
     if (button) setProxyMode(button.dataset.mode);
+  });
+
+  el('translateSeg').addEventListener('click', async (event) => {
+    const button = event.target.closest('.seg-item');
+    if (!button) return;
+    const want = button.dataset.translate === 'on';
+    try {
+      const on = await call('set_translate', { enabled: want });
+      state.info = Object.assign({}, state.info, { translate: on });
+      if (state.settings) state.settings.translate = on;
+      setSeg('#translateSeg', 'translate', on);
+      if (!on) { hideTransTrigger(); closeTransPop(); }
+      toast(on ? '划词翻译已开启（每次翻译会消耗 token）' : '划词翻译已关闭', 'ok');
+    } catch (error) {
+      toast('设置失败：' + String(error), 'bad');
+    }
   });
 
   el('notifySeg').addEventListener('click', async (event) => {
@@ -1801,7 +1941,11 @@ function bind() {
     }));
 
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && state.reading) { setReading(false); return; }
+    if (event.key === 'Escape') {
+      hideTransTrigger();
+      closeTransPop();
+      if (state.reading) { setReading(false); return; }
+    }
     if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
       event.preventDefault();
       if (state.view === 'exam') {

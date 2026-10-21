@@ -283,6 +283,18 @@
                 <span class="field-hint">每天提醒一次：过了早上九点（或开机后）提醒你学习，当天不再重复。改动立即生效。</span>
               </div>
             </div>
+
+            <div class="block">
+              <div class="block-head"><h2>划词翻译</h2></div>
+              <div class="field">
+                <span class="field-label">选中文字后翻译</span>
+                <div class="seg" id="translateSeg">
+                  <button class="seg-item" data-translate="on">开启</button>
+                  <button class="seg-item" data-translate="off">关闭</button>
+                </div>
+                <span class="field-hint">开启后，在学习页正文里选中文字会浮出「翻译」按钮，点它才发请求。翻译会调用模型、消耗 token；为了快，翻译请求会关闭思考。改动立即生效。</span>
+              </div>
+            </div>
           </div>
 
           <div class="col-side">
@@ -348,6 +360,20 @@
         <div class="canvas" id="graphCanvas"></div>
       </section>
     </main>
+  </div>
+
+  <button class="trans-trigger" id="transTrigger" type="button" hidden>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h9M8.5 3v2c0 4-2 7-5 9" /><path d="M5 9c1.5 3 4 5 7 6" /><path d="M13 21l4-10 4 10" /><path d="M14.6 17h4.8" /></svg>
+    <span>翻译</span>
+  </button>
+  <div class="trans-pop" id="transPop" hidden>
+    <div class="trans-pop-head">
+      <span>翻译</span>
+      <button class="trans-close" id="transClose" type="button" aria-label="关闭翻译">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+      </button>
+    </div>
+    <div class="trans-body" id="transBody"></div>
   </div>
 
   <div class="toast" id="toast" hidden></div>

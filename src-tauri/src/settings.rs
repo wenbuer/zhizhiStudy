@@ -27,6 +27,8 @@ pub struct Settings {
     pub model: String,
     /// 每天一条学习提醒（过了提醒时间、当天还没提醒过才发）
     pub notify: bool,
+    /// 学习页划词翻译：选中文字后浮出「翻译」按钮，点它才调用模型
+    pub translate: bool,
     /// auto：环境变量 → 系统代理 → 本地常见端口；manual：只用 proxy_url；off：直连。
     pub proxy_mode: String,
     pub proxy_url: String,
@@ -41,6 +43,7 @@ impl Default for Settings {
             api_key: std::env::var("LLM_API_KEY").unwrap_or_default(),
             model: env_or("LLM_MODEL", "deepseek-chat"),
             notify: true,
+            translate: false,
             proxy_mode: env_or("STUDYFORGE_PROXY_MODE", "auto"),
             proxy_url: std::env::var("HTTPS_PROXY")
                 .or_else(|_| std::env::var("HTTP_PROXY"))

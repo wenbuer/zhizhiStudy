@@ -1,5 +1,7 @@
 //! LLM 调用：整理材料、生成考点、评判作答（OpenAI 兼容接口）。
 
+use std::time::Duration;
+
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -35,6 +37,8 @@ verdict（correct 全对 / partial 部分对 / wrong 基本不对）、\
 feedback（2-4 句评语，先肯定答对的部分，再指出问题）、\
 missed（遗漏的关键点字符串数组，没有则空数组）、\
 suggestion（2-4 句理想答案）。只输出 JSON 对象。";
+
+const TRANSLATE_SYSTEM: &str = "你是翻译器。把用户选中的内容翻译成简体中文；如果原文已经是中文，就翻译成英文。只输出译文本身：不要解释、不要加引号、不要复述原文、不要写思考过程。";
 
 const EXTRACT_SYSTEM: &str = "你是资料整理助手。用户会给你一段从网页或搜索结果里抓来的原始文本，\
 把它整理成干净、可直接用于学习的中文 Markdown 材料：\
@@ -111,15 +115,60 @@ impl LlmClient {
         !self.api_key.is_empty()
     }
 
+    /// 划词翻译：关掉思考、限时 30 秒，求快。接口不认 `thinking` 字段时退一步重发。
+    pub async fn translate(&self, text: &str) -> Result<String> {
+        let messages = json!([
+            { "role": "system", "content": TRANSLATE_SYSTEM },
+            { "role": "user", "content": text },
+        ]);
+        let no_think = json!({ "thinking": { "type": "disabled" } });
+        match self
+            .chat_extra(messages.clone(), &self.model, 1500, 0.1, Some(no_think), Some(30))
+            .await
+        {
+            Ok(reply) => Ok(reply.trim().to_string()),
+            Err(error) if rejects_thinking(&error) => {
+                // 第三方 OpenAI 兼容服务不认这个字段：去掉它再发一次，别让翻译直接失败。
+                self.chat_extra(messages, &self.model, 1500, 0.1, None, Some(30))
+                    .await
+                    .map(|reply| reply.trim().to_string())
+            }
+            Err(error) => Err(error),
+        }
+    }
+
     pub fn model_name(&self) -> &str {
         &self.model
     }
 
     async fn chat(&self, messages: Value, model: &str, max_tokens: u32, temperature: f32) -> Result<String> {
-        self.chat_at(&self.base, &self.api_key, messages, model, max_tokens, temperature)
-            .await
+        self.chat_extra(messages, model, max_tokens, temperature, None, None).await
     }
 
+    /// 在标准请求体上追加字段（如关闭思考）并可单独收紧超时；其余调用沿用默认值。
+    async fn chat_extra(
+        &self,
+        messages: Value,
+        model: &str,
+        max_tokens: u32,
+        temperature: f32,
+        extra: Option<Value>,
+        timeout_secs: Option<u64>,
+    ) -> Result<String> {
+        self.chat_at(
+            &self.base,
+            &self.api_key,
+            messages,
+            model,
+            max_tokens,
+            temperature,
+            extra,
+            timeout_secs,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
     async fn chat_at(
         &self,
         base: &str,
@@ -128,23 +177,34 @@ impl LlmClient {
         model: &str,
         max_tokens: u32,
         temperature: f32,
+        extra: Option<Value>,
+        timeout_secs: Option<u64>,
     ) -> Result<String> {
         if key.is_empty() {
             return Err(anyhow!("未配置 LLM_API_KEY：请在项目根目录的 .env 里填写后重启"));
         }
-        let body = json!({
+        let mut body = json!({
             "model": model,
             "messages": messages,
             "max_tokens": max_tokens,
             "temperature": temperature,
         });
-        let resp = self
+        if let (Some(extra), Some(fields)) = (extra, body.as_object_mut()) {
+            if let Value::Object(extra) = extra {
+                for (name, value) in extra {
+                    fields.insert(name, value);
+                }
+            }
+        }
+        let mut request = self
             .http
             .post(format!("{base}/chat/completions"))
             .bearer_auth(key)
-            .json(&body)
-            .send()
-            .await?;
+            .json(&body);
+        if let Some(secs) = timeout_secs {
+            request = request.timeout(Duration::from_secs(secs));
+        }
+        let resp = request.send().await?;
         let status = resp.status();
         let text = resp.text().await?;
         if !status.is_success() {
@@ -334,6 +394,14 @@ pub fn extract_json(raw: &str, open: char, close: char) -> Result<String> {
     Ok(raw[start..=end].to_string())
 }
 
+/// 接口是否因为不认识 `thinking` 字段而拒绝：是的话就去掉它重试。
+fn rejects_thinking(error: &anyhow::Error) -> bool {
+    let text = error.to_string().to_lowercase();
+    ["thinking", "unknown field", "unrecognized", "unknown parameter", "extra field"]
+        .iter()
+        .any(|needle| text.contains(needle))
+}
+
 pub fn truncate(text: &str, max_chars: usize) -> String {
     if text.chars().count() <= max_chars {
         return text.to_string();
@@ -352,6 +420,14 @@ mod tests {
         let raw = format!("好的，结果如下：\n{fence}json\n[{{\"title\":\"A\"}}]\n{fence}\n希望有帮助");
         let got = extract_json(&raw, '[', ']').unwrap();
         assert_eq!(got, "[{\"title\":\"A\"}]");
+    }
+
+    #[test]
+    fn thinking_param_rejection_is_detected() {
+        let rejected = anyhow!("模型接口返回 400：{{\"error\":{{\"message\":\"Unrecognized request argument: thinking\"}}}}");
+        assert!(rejects_thinking(&rejected));
+        let timeout = anyhow!("请求超时");
+        assert!(!rejects_thinking(&timeout));
     }
 
     #[test]
