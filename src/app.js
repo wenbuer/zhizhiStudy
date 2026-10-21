@@ -90,6 +90,7 @@ function switchView(name) {
   el('viewTitle').textContent = VIEW_TITLES[name] || name;
   if (name !== 'learn' && state.reading) setReading(false);
   if (name !== 'learn') { hideTransTrigger(); closeTransPop(); }
+  if (name !== 'settings') closeSettingsDrawer();
   if (name === 'insight') renderGraph();
   if (name === 'quiz') renderQuiz().catch((error) => toast('测验页加载失败：' + String(error), 'bad'));
   if (name === 'exam') {
@@ -1524,7 +1525,38 @@ async function loadSettings() {
   el('dataDir').textContent = (state.info && state.info.dataDir) || '';
   setSeg('#notifySeg', 'notify', s.notify !== false);
   setSeg('#translateSeg', 'translate', s.translate === true);
+  refreshSettingValues();
   await loadAutostart();
+}
+
+/* 设置行右边显示当前值：抽屉里的输入一改，行上的字跟着变 */
+function refreshSettingValues() {
+  const value = (id) => {
+    const input = el(id);
+    return input ? input.value.trim() : '';
+  };
+  el('valueApiBase').textContent = value('sApiBase') || '未填写';
+  el('valueApiKey').textContent = value('sApiKey') ? '已填写' : '未填写';
+  el('valueModel').textContent = value('sModel') || '未填写';
+  el('valueProxyUrl').textContent = value('sProxyUrl') || '未填写';
+  el('valueNoProxy').textContent = value('sNoProxy') || '未填写';
+}
+
+/* 右侧抽屉：要填写的项从这里进，改完点「完成」收起 */
+function openSettingsDrawer(name, focusId) {
+  el('drawerLlm').hidden = name !== 'llm';
+  el('drawerProxy').hidden = name !== 'proxy';
+  el('drawerTitle').textContent = name === 'proxy' ? '网络代理' : '模型接口';
+  el('settingsDrawer').hidden = false;
+  if (focusId) {
+    const input = el(focusId);
+    if (input) setTimeout(() => input.focus(), 50);
+  }
+}
+
+function closeSettingsDrawer() {
+  const drawer = el('settingsDrawer');
+  if (drawer) drawer.hidden = true;
 }
 
 /* 二选一的开关：把 data-* 值和当前状态对上 */
@@ -1578,6 +1610,7 @@ async function saveSettings(silent) {
   const info = await call('save_settings', { settings: collectSettings() });
   state.info = info;
   renderChrome();
+  refreshSettingValues();
   if (!silent) {
     el('saveHint').textContent = '已保存 · ' + new Date().toLocaleTimeString();
     toast('设置已保存，接口已重建', 'ok');
@@ -1868,6 +1901,16 @@ function bind() {
   el('saveSettingsBtn').addEventListener('click', (event) =>
     withBusy(event.currentTarget, '保存中', () => saveSettings(false)));
 
+  document.querySelectorAll('[data-drawer]').forEach((row) => {
+    row.addEventListener('click', () => openSettingsDrawer(row.dataset.drawer, row.dataset.focus));
+  });
+  document.querySelectorAll('[data-drawer-close]').forEach((node) => {
+    node.addEventListener('click', closeSettingsDrawer);
+  });
+  ['sApiBase', 'sApiKey', 'sModel', 'sProxyUrl', 'sNoProxy'].forEach((id) => {
+    el(id).addEventListener('input', refreshSettingValues);
+  });
+
   el('detectBtn').addEventListener('click', (event) =>
     withBusy(event.currentTarget, '检测中', detectProxy));
 
@@ -1942,6 +1985,8 @@ function bind() {
 
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
+      const drawer = el('settingsDrawer');
+      if (drawer && !drawer.hidden) { closeSettingsDrawer(); return; }
       hideTransTrigger();
       closeTransPop();
       if (state.reading) { setReading(false); return; }

@@ -241,35 +241,25 @@
 
       <!-- 设置 -->
       <section class="view" data-view="settings">
-        <div class="grid-settings">
-          <div class="col-main">
+        <div class="settings-scroll">
+          <div class="settings-column">
             <div class="block">
-              <div class="block-head">
-                <h2>模型接口</h2>
-                <button class="btn btn-slim" id="testLlmBtn">测试连接</button>
-              </div>
-              <label class="field">
-                <span class="field-label">API 地址</span>
-                <input id="sApiBase" type="text" placeholder="https://api.deepseek.com/v1" />
-              </label>
-              <label class="field">
-                <span class="field-label">API Key</span>
-                <div class="input-wrap">
-                  <input id="sApiKey" type="password" placeholder="sk-..." autocomplete="off" spellcheck="false" />
-                  <button class="reveal-btn" type="button" data-reveal="sApiKey">显示</button>
-                </div>
-              </label>
-              <label class="field">
-                <span class="field-label">模型名</span>
-                <input id="sModel" type="text" placeholder="deepseek-chat" />
-              </label>
-
-              <div class="result" id="llmResult" hidden></div>
-            </div>
-
-            <div class="block">
-              <div class="block-head"><h2>数据位置</h2></div>
-              <div class="block-note" id="dataDir">读取中</div>
+              <div class="block-head"><h2>模型接口</h2></div>
+              <button class="setting-row" type="button" data-drawer="llm" data-focus="sApiBase">
+                <span class="setting-label">API 地址</span>
+                <span class="setting-value" id="valueApiBase">未填写</span>
+                <svg class="setting-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+              </button>
+              <button class="setting-row" type="button" data-drawer="llm" data-focus="sApiKey">
+                <span class="setting-label">API Key</span>
+                <span class="setting-value" id="valueApiKey">未填写</span>
+                <svg class="setting-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+              </button>
+              <button class="setting-row" type="button" data-drawer="llm" data-focus="sModel">
+                <span class="setting-label">模型名</span>
+                <span class="setting-value" id="valueModel">未填写</span>
+                <svg class="setting-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+              </button>
             </div>
 
             <div class="block">
@@ -295,9 +285,7 @@
                 <span class="field-hint">开启后，在学习页正文里选中文字会浮出「翻译」按钮，点它才发请求。翻译会调用模型、消耗 token；为了快，翻译请求会关闭思考。改动立即生效。</span>
               </div>
             </div>
-          </div>
 
-          <div class="col-side">
             <div class="block">
               <div class="block-head">
                 <h2>网络代理</h2>
@@ -313,18 +301,16 @@
                   <button class="seg-item" data-mode="off">不用代理</button>
                 </div>
               </div>
-              <label class="field">
-                <span class="field-label">代理地址</span>
-                <div class="field-row">
-                  <input id="sProxyUrl" type="text" placeholder="http://127.0.0.1:10809" />
-                  <button class="btn btn-slim" id="testProxyBtn">测试</button>
-                </div>
-              </label>
-              <label class="field">
-                <span class="field-label">不走代理的域名</span>
-                <input id="sNoProxy" type="text" placeholder="localhost, 127.0.0.1, .internal" />
-              </label>
-              <div class="result" id="proxyTestResult" hidden></div>
+              <button class="setting-row" type="button" data-drawer="proxy" data-focus="sProxyUrl">
+                <span class="setting-label">代理地址</span>
+                <span class="setting-value" id="valueProxyUrl">未填写</span>
+                <svg class="setting-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+              </button>
+              <button class="setting-row" type="button" data-drawer="proxy" data-focus="sNoProxy">
+                <span class="setting-label">不走代理的域名</span>
+                <span class="setting-value" id="valueNoProxy">未填写</span>
+                <svg class="setting-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+              </button>
             </div>
 
             <div class="block">
@@ -338,12 +324,73 @@
                 <span class="field-hint">登录 Windows 后自动打开致知。改动立即生效，不用点保存。</span>
               </div>
             </div>
+
+            <div class="block">
+              <div class="block-head"><h2>数据位置</h2></div>
+              <div class="block-note" id="dataDir">读取中</div>
+            </div>
           </div>
         </div>
 
         <div class="save-bar">
           <button class="btn btn-primary" id="saveSettingsBtn">保存设置</button>
           <span class="save-hint" id="saveHint">保存后立刻生效，不需要重启</span>
+        </div>
+
+        <div class="settings-drawer" id="settingsDrawer" hidden>
+          <div class="drawer-backdrop" data-drawer-close></div>
+          <aside class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+            <div class="drawer-head">
+              <h2 id="drawerTitle">模型接口</h2>
+              <button class="drawer-close" type="button" data-drawer-close aria-label="关闭">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+              </button>
+            </div>
+            <div class="drawer-body">
+              <div id="drawerLlm">
+                <label class="field">
+                  <span class="field-label">API 地址</span>
+                  <input id="sApiBase" type="text" placeholder="https://api.deepseek.com/v1" />
+                </label>
+                <label class="field">
+                  <span class="field-label">API Key</span>
+                  <div class="input-wrap">
+                    <input id="sApiKey" type="password" placeholder="sk-..." autocomplete="off" spellcheck="false" />
+                    <button class="reveal-btn" type="button" data-reveal="sApiKey">显示</button>
+                  </div>
+                  <span class="field-hint">Key 只保存在本机的 config.json。</span>
+                </label>
+                <label class="field">
+                  <span class="field-label">模型名</span>
+                  <input id="sModel" type="text" placeholder="deepseek-chat" />
+                </label>
+                <div class="field-row field-row-end">
+                  <button class="btn" id="testLlmBtn" type="button">测试连接</button>
+                </div>
+                <div class="result" id="llmResult" hidden></div>
+              </div>
+
+              <div id="drawerProxy" hidden>
+                <label class="field">
+                  <span class="field-label">代理地址</span>
+                  <div class="field-row">
+                    <input id="sProxyUrl" type="text" placeholder="http://127.0.0.1:10809" />
+                    <button class="btn" id="testProxyBtn" type="button">测试</button>
+                  </div>
+                  <span class="field-hint">「手动」模式下用这个地址；自动模式会自己探测。</span>
+                </label>
+                <label class="field">
+                  <span class="field-label">不走代理的域名</span>
+                  <input id="sNoProxy" type="text" placeholder="localhost, 127.0.0.1, .internal" />
+                </label>
+                <div class="result" id="proxyTestResult" hidden></div>
+              </div>
+            </div>
+            <div class="drawer-foot">
+              <span class="field-hint">填完点「保存设置」生效</span>
+              <button class="btn btn-primary" type="button" data-drawer-close>完成</button>
+            </div>
+          </aside>
         </div>
       </section>
 
