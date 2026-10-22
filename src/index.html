@@ -244,84 +244,45 @@
         <div class="settings-scroll">
           <div class="settings-column">
             <div class="block">
-              <div class="block-head"><h2>模型接口</h2></div>
               <button class="setting-row" type="button" data-drawer="llm" data-focus="sApiBase">
-                <span class="setting-label">API 地址</span>
-                <span class="setting-value" id="valueApiBase">未填写</span>
+                <span class="setting-label">模型接口</span>
+                <span class="setting-value" id="valueLlm">未填写</span>
                 <svg class="setting-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
               </button>
-              <button class="setting-row" type="button" data-drawer="llm" data-focus="sApiKey">
-                <span class="setting-label">API Key</span>
-                <span class="setting-value" id="valueApiKey">未填写</span>
-                <svg class="setting-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
-              </button>
-              <button class="setting-row" type="button" data-drawer="llm" data-focus="sModel">
-                <span class="setting-label">模型名</span>
-                <span class="setting-value" id="valueModel">未填写</span>
+              <button class="setting-row" type="button" data-drawer="proxy" data-focus="sProxyUrl">
+                <span class="setting-label">网络代理</span>
+                <span class="setting-value" id="valueProxy">未填写</span>
                 <svg class="setting-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
               </button>
             </div>
 
             <div class="block">
-              <div class="block-head"><h2>学习提醒</h2></div>
-              <div class="field">
-                <span class="field-label">系统通知</span>
+              <div class="switch-row">
+                <span class="switch-name">学习提醒
+                  <span class="info-dot" tabindex="0" data-tip="每天早九点后（或开机后）提醒一次，当天不重复。">!</span>
+                </span>
                 <div class="seg" id="notifySeg">
                   <button class="seg-item" data-notify="on">开启</button>
                   <button class="seg-item" data-notify="off">关闭</button>
                 </div>
-                <span class="field-hint">每天提醒一次：过了早上九点（或开机后）提醒你学习，当天不再重复。改动立即生效。</span>
               </div>
-            </div>
-
-            <div class="block">
-              <div class="block-head"><h2>划词翻译</h2></div>
-              <div class="field">
-                <span class="field-label">选中文字后翻译</span>
+              <div class="switch-row">
+                <span class="switch-name">划词翻译
+                  <span class="info-dot" tabindex="0" data-tip="学习页选中文字浮出翻译按钮，点它才请求；每次消耗 token，请求关闭思考。">!</span>
+                </span>
                 <div class="seg" id="translateSeg">
                   <button class="seg-item" data-translate="on">开启</button>
                   <button class="seg-item" data-translate="off">关闭</button>
                 </div>
-                <span class="field-hint">开启后，在学习页正文里选中文字会浮出「翻译」按钮，点它才发请求。翻译会调用模型、消耗 token；为了快，翻译请求会关闭思考。改动立即生效。</span>
               </div>
-            </div>
-
-            <div class="block">
-              <div class="block-head">
-                <h2>网络代理</h2>
-                <button class="btn btn-slim" id="detectBtn">检测代理</button>
-              </div>
-              <div class="result" id="proxyResult">点「检测代理」，看看系统里有没有可用的代理。</div>
-
-              <div class="field" style="margin-top: 16px">
-                <span class="field-label">代理模式</span>
-                <div class="seg" id="proxyMode">
-                  <button class="seg-item" data-mode="auto">自动</button>
-                  <button class="seg-item" data-mode="manual">手动</button>
-                  <button class="seg-item" data-mode="off">不用代理</button>
-                </div>
-              </div>
-              <button class="setting-row" type="button" data-drawer="proxy" data-focus="sProxyUrl">
-                <span class="setting-label">代理地址</span>
-                <span class="setting-value" id="valueProxyUrl">未填写</span>
-                <svg class="setting-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
-              </button>
-              <button class="setting-row" type="button" data-drawer="proxy" data-focus="sNoProxy">
-                <span class="setting-label">不走代理的域名</span>
-                <span class="setting-value" id="valueNoProxy">未填写</span>
-                <svg class="setting-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
-              </button>
-            </div>
-
-            <div class="block">
-              <div class="block-head"><h2>启动</h2></div>
-              <div class="field">
-                <span class="field-label">开机自启</span>
+              <div class="switch-row">
+                <span class="switch-name">开机自启
+                  <span class="info-dot" tabindex="0" data-tip="登录 Windows 后自动打开致知，改动立即生效。">!</span>
+                </span>
                 <div class="seg" id="autostartSeg">
                   <button class="seg-item" data-auto="on">开启</button>
                   <button class="seg-item" data-auto="off">关闭</button>
                 </div>
-                <span class="field-hint">登录 Windows 后自动打开致知。改动立即生效，不用点保存。</span>
               </div>
             </div>
 
@@ -358,7 +319,6 @@
                     <input id="sApiKey" type="password" placeholder="sk-..." autocomplete="off" spellcheck="false" />
                     <button class="reveal-btn" type="button" data-reveal="sApiKey">显示</button>
                   </div>
-                  <span class="field-hint">Key 只保存在本机的 config.json。</span>
                 </label>
                 <label class="field">
                   <span class="field-label">模型名</span>
@@ -371,13 +331,24 @@
               </div>
 
               <div id="drawerProxy" hidden>
-                <label class="field">
+                <div class="field">
+                  <span class="field-label">代理模式</span>
+                  <div class="seg" id="proxyMode">
+                    <button class="seg-item" data-mode="auto">自动</button>
+                    <button class="seg-item" data-mode="manual">手动</button>
+                    <button class="seg-item" data-mode="off">不用代理</button>
+                  </div>
+                </div>
+                <div class="field-row field-row-end">
+                  <button class="btn" id="detectBtn" type="button">检测代理</button>
+                </div>
+                <div class="result" id="proxyResult">点「检测代理」，看看系统里有没有可用的代理。</div>
+                <label class="field" style="margin-top: 16px">
                   <span class="field-label">代理地址</span>
                   <div class="field-row">
                     <input id="sProxyUrl" type="text" placeholder="http://127.0.0.1:10809" />
                     <button class="btn" id="testProxyBtn" type="button">测试</button>
                   </div>
-                  <span class="field-hint">「手动」模式下用这个地址；自动模式会自己探测。</span>
                 </label>
                 <label class="field">
                   <span class="field-label">不走代理的域名</span>

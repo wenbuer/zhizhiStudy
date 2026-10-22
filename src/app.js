@@ -1529,17 +1529,17 @@ async function loadSettings() {
   await loadAutostart();
 }
 
-/* 设置行右边显示当前值：抽屉里的输入一改，行上的字跟着变 */
+/* 两行入口的右侧摘要：抽屉里一改，行上的字跟着变 */
 function refreshSettingValues() {
   const value = (id) => {
     const input = el(id);
     return input ? input.value.trim() : '';
   };
-  el('valueApiBase').textContent = value('sApiBase') || '未填写';
-  el('valueApiKey').textContent = value('sApiKey') ? '已填写' : '未填写';
-  el('valueModel').textContent = value('sModel') || '未填写';
-  el('valueProxyUrl').textContent = value('sProxyUrl') || '未填写';
-  el('valueNoProxy').textContent = value('sNoProxy') || '未填写';
+  const model = value('sModel') || 'deepseek-chat';
+  el('valueLlm').textContent = model + (value('sApiKey') ? ' · 已填 Key' : ' · 未填 Key');
+  const mode = { auto: '自动', manual: '手动', off: '不用代理' }[currentProxyMode()] || '自动';
+  const url = value('sProxyUrl');
+  el('valueProxy').textContent = url ? mode + ' · ' + url : mode;
 }
 
 /* 右侧抽屉：要填写的项从这里进，改完点「完成」收起 */
@@ -1585,6 +1585,7 @@ function setProxyMode(mode) {
   document.querySelectorAll('#proxyMode .seg-item').forEach((button) => {
     button.classList.toggle('is-active', button.dataset.mode === mode);
   });
+  refreshSettingValues();
 }
 
 function currentProxyMode() {

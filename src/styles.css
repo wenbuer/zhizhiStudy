@@ -947,7 +947,6 @@ body.is-reading .study-card > * {
   align-items: center;
   gap: 12px;
   width: 100%;
-  margin-top: 8px;
   padding: 11px 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
@@ -960,6 +959,7 @@ body.is-reading .study-card > * {
   transition: border-color 140ms ease, background 140ms ease;
 }
 
+.setting-row + .setting-row { margin-top: 8px; }
 .setting-row:hover { border-color: var(--line-strong); background: #f4f6f9; }
 .setting-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .setting-label { flex: none; color: var(--fg-muted); }
@@ -984,6 +984,62 @@ body.is-reading .study-card > * {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+
+/* 开关：一格里排三行，说明收进名字旁的小圈 */
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 11px 2px;
+}
+.switch-row + .switch-row { border-top: 1px solid var(--line); }
+.switch-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  color: var(--fg);
+}
+
+.info-dot {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  color: var(--fg-dim);
+  font-size: 9px;
+  line-height: 1;
+  cursor: help;
+}
+.info-dot::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: -4px;
+  bottom: calc(100% + 8px);
+  z-index: 5;
+  width: max-content;
+  max-width: 260px;
+  padding: 7px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  color: var(--fg-muted);
+  font-size: 11.5px;
+  line-height: 1.55;
+  white-space: normal;
+  box-shadow: 0 8px 22px rgba(16, 24, 40, 0.14);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 120ms ease;
+  pointer-events: none;
+}
+.info-dot:hover::after,
+.info-dot:focus-visible::after { opacity: 1; visibility: visible; }
 
 /* 右侧抽屉 */
 .settings-drawer { position: fixed; inset: 0; z-index: 30; }
