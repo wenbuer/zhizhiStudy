@@ -24,11 +24,12 @@ fn main() {
     let cards = store.list_cards(None).expect("读取卡片失败");
     let stats = store.stats(&today).expect("统计失败");
     let due = store.due_cards(&today, 200).expect("读取到期队列失败");
+    let learned = store.learned_cards(-1).expect("读取已学卡片失败");
     let forecast = store.due_forecast(&today, 30).expect("读取预测失败");
 
     let jobs: [(&str, String); 3] = [
         ("knowledge-map", graph::knowledge_map("全部材料", &cards, &today)),
-        ("review-plan", graph::review_plan(&forecast, &today, &due)),
+        ("review-plan", graph::review_plan(&forecast, &today, &due, &learned)),
         ("stage-guide", graph::stage_guide(&stats, &cards, &today)),
     ];
     for (name, svg) in jobs {

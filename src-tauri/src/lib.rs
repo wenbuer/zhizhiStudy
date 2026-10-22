@@ -614,7 +614,8 @@ fn render_review_plan(state: State<'_, AppState>) -> Result<String, String> {
     let day = today();
     let due = store.due_cards(&day, 200).map_err(err_str)?;
     let forecast = store.due_forecast(&day, 30).map_err(err_str)?;
-    Ok(graph::review_plan(&forecast, &day, &due))
+    let learned = store.learned_cards(-1).map_err(err_str)?;
+    Ok(graph::review_plan(&forecast, &day, &due, &learned))
 }
 
 #[tauri::command]

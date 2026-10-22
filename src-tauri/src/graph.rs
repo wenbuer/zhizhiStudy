@@ -256,7 +256,23 @@ pub fn knowledge_map(material_title: &str, cards: &[Card], today: &str) -> Strin
 }
 
 /// 复习计划：未来 30 天每日到期量 + 今日队列。
-pub fn review_plan(forecast: &[(String, i64)], today: &str, queue: &[Card]) -> String {
+/// FSRS 遗忘曲线：保持稳定度 S 的卡，t 天后仍记得的概率（0..1）。
+pub fn retention(stability: f64, elapsed_days: f64) -> f64 {
+    if stability <= 0.0 {
+        return 0.0;
+    }
+    let t = elapsed_days.max(0.0);
+    (1.0 + 19.0 / 81.0 * t / stability).powf(-0.5)
+}
+
+fn days_since(date: &str, today: &str) -> Option<f64> {
+    let from = chrono::NaiveDate::parse_from_str(date.get(0..10)?, "%Y-%m-%d").ok()?;
+    let to = chrono::NaiveDate::parse_from_str(today.get(0..10)?, "%Y-%m-%d").ok()?;
+    Some((to - from).num_days() as f64)
+}
+
+/// 复习计划：未来 30 天每日到期量 + 记忆保持率曲线 + 今日队列。
+pub fn review_plan(forecast: &[(String, i64)], today: &str, queue: &[Card], learned: &[Card]) -> String {
     let width = 1400.0f64;
     let chart_top = 150.0f64;
     let chart_h = 300.0f64;
@@ -276,8 +292,28 @@ pub fn review_plan(forecast: &[(String, i64)], today: &str, queue: &[Card]) -> S
         .collect();
     let total: i64 = counts.iter().sum();
 
+    // 每张已学卡按「稳定度 + 距上次复习天数」算出未来每天的保持率，再取平均
+    let histories: Vec<(f64, f64)> = learned
+        .iter()
+        .filter(|c| c.learned && c.stability > 0.0)
+        .filter_map(|c| Some((c.stability, days_since(c.last_review.as_deref()?, today)?.max(0.0))))
+        .collect();
+    let curve: Vec<f64> = (0..days)
+        .map(|i| {
+            if histories.is_empty() {
+                0.0
+            } else {
+                histories.iter().map(|(s, e)| retention(*s, e + i as f64)).sum::<f64>()
+                    / histories.len() as f64
+            }
+        })
+        .collect();
+
     let queue_rows = queue.len().min(14);
-    let height = chart_top + chart_h + 120.0 + queue_rows as f64 * 30.0 + 120.0;
+    let mem_top = chart_top + chart_h + 92.0;
+    let mem_h = 190.0;
+    let list_top = mem_top + mem_h + 74.0;
+    let height = list_top + 120.0 + queue_rows as f64 * 30.0 + 60.0;
 
     let mut s = svg_open(width, height);
     s.push_str(&text(left, 62.0, 30.0, FG, "700", "start", "复习计划"));
@@ -326,9 +362,91 @@ pub fn review_plan(forecast: &[(String, i64)], today: &str, queue: &[Card]) -> S
             s.push_str(&text(x + w / 2.0, chart_top + chart_h + 22.0, 11.5, MUTED, "400", "middle", &dates[i][5..]));
         }
     }
+    s.push_str(&text(
+        left,
+        chart_top - 16.0,
+        12.0,
+        MUTED,
+        "400",
+        "start",
+        "每天到期张数",
+    ));
+
+    // 记忆保持率：同一条时间轴，画 30 天的平均衰减
+    s.push_str(&text(left, mem_top - 14.0, 18.0, FG, "600", "start", "记忆保持率"));
+    let note = if histories.is_empty() {
+        "还没有复习记录：学几张卡、复习一次，这里就会长出衰减曲线".to_string()
+    } else {
+        format!(
+            "{} 张已学卡的平均保持率 · 按当前记忆稳定度推算（之后不再复习）",
+            histories.len()
+        )
+    };
+    s.push_str(&text(left, mem_top + 8.0, 12.5, MUTED, "400", "start", &note));
+
+    let m_top = mem_top + 26.0;
+    let m_bottom = m_top + mem_h;
+    for (val, label) in [(0.0, "0%"), (0.25, "25%"), (0.5, "50%"), (0.75, "75%"), (1.0, "100%")] {
+        let gy = m_bottom - mem_h * val;
+        s.push_str(&format!(
+            "<line x1=\"{left}\" y1=\"{gy}\" x2=\"{right}\" y2=\"{gy}\" stroke=\"{LINE}\" stroke-dasharray=\"3 6\"/>",
+            left = left, right = right, gy = gy, LINE = LINE
+        ));
+        s.push_str(&text(left - 12.0, gy + 4.0, 12.0, MUTED, "400", "end", label));
+    }
+    let y90 = m_bottom - mem_h * 0.9;
+    s.push_str(&format!(
+        "<line x1=\"{left}\" y1=\"{y}\" x2=\"{right}\" y2=\"{y}\" stroke=\"{WARN}\" stroke-dasharray=\"6 5\"/>",
+        left = left, right = right, y = y90, WARN = WARN
+    ));
+    s.push_str(&text(right - 4.0, y90 - 6.0, 11.5, WARN, "400", "end", "90% 复习线"));
+
+    if histories.is_empty() {
+        s.push_str(&text(left + 12.0, m_top + mem_h / 2.0 + 5.0, 14.0, MUTED, "400", "start", "暂无曲线"));
+    } else {
+        let mut points = String::new();
+        for (i, keep) in curve.iter().enumerate() {
+            let x = left + i as f64 * slot + slot / 2.0;
+            let y = m_bottom - mem_h * keep.clamp(0.0, 1.0);
+            points.push_str(&format!("{x:.1},{y:.1} "));
+        }
+        s.push_str(&format!(
+            "<polyline points=\"{}\" fill=\"none\" stroke=\"{ACCENT}\" stroke-width=\"2.5\" stroke-linejoin=\"round\" stroke-linecap=\"round\"/>",
+            points.trim_end()
+        ));
+        let first = curve[0];
+        let last = curve[days - 1];
+        let start_y = m_bottom - mem_h * first;
+        let end_y = m_bottom - mem_h * last;
+        s.push_str(&format!(
+            "<circle cx=\"{x}\" cy=\"{y}\" r=\"4\" fill=\"{ACCENT}\"/>",
+            x = left + slot / 2.0, y = start_y, ACCENT = ACCENT
+        ));
+        s.push_str(&text(
+            left + slot / 2.0 + 10.0,
+            start_y + 18.0,
+            12.0,
+            MUTED,
+            "400",
+            "start",
+            &format!("今天 {:.0}%", first * 100.0),
+        ));
+        s.push_str(&format!(
+            "<circle cx=\"{x}\" cy=\"{y}\" r=\"4\" fill=\"{ACCENT}\"/>",
+            x = right - slot / 2.0, y = end_y, ACCENT = ACCENT
+        ));
+        s.push_str(&text(
+            right - 4.0,
+            end_y + 20.0,
+            12.0,
+            MUTED,
+            "400",
+            "end",
+            &format!("30 天后 {:.0}%", last * 100.0),
+        ));
+    }
 
     // 今日队列
-    let list_top = chart_top + chart_h + 76.0;
     s.push_str(&text(left, list_top, 18.0, FG, "600", "start", &format!("今天要做（{} 张）", queue.len())));
     if queue.is_empty() {
         s.push_str(&text(left, list_top + 32.0, 14.0, MUTED, "400", "start", "今天没有要复习的卡：要么去学新卡，要么休息。"));
@@ -534,8 +652,34 @@ mod tests {
 
     #[test]
     fn review_plan_handles_empty_forecast() {
-        let svg = review_plan(&[], "2026-10-10", &[]);
+        let svg = review_plan(&[], "2026-10-10", &[], &[]);
         assert!(svg.contains("今天没有要复习的卡"));
+        assert!(svg.contains("记忆保持率"));
+    }
+
+    #[test]
+    fn review_plan_draws_retention_curve() {
+        let mut weak = card(1, 1, true, "2026-10-10", 2);
+        weak.last_review = Some("2026-10-08T09:00:00".into());
+        weak.stability = 2.0;
+        let mut mid = card(2, 2, true, "2026-10-10", 2);
+        mid.last_review = Some("2026-10-01T09:00:00".into());
+        mid.stability = 10.0;
+        let mut strong = card(3, 3, true, "2026-10-10", 2);
+        strong.last_review = Some("2026-09-01T09:00:00".into());
+        strong.stability = 40.0;
+        let forecast = vec![
+            ("2026-10-10".to_string(), 3),
+            ("2026-10-13".to_string(), 6),
+            ("2026-10-20".to_string(), 4),
+        ];
+        let svg = review_plan(&forecast, "2026-10-10", &[], &[weak, mid, strong]);
+        assert!(svg.contains("90% 复习线"));
+        assert!(svg.contains("<polyline"));
+        // 想看真实排版时：设 ZHIZHI_SVG_OUT 指向一个 .svg 路径再跑这条测试
+        if let Some(path) = std::env::var_os("ZHIZHI_SVG_OUT") {
+            let _ = std::fs::write(path, &svg);
+        }
     }
 
     #[test]
