@@ -5923,7 +5923,7 @@ dependencies = [
 
 [[package]]
 name = "zhizhi"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "anyhow",
  "chrono",
