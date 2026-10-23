@@ -1099,6 +1099,89 @@ body.is-reading .study-card > * {
   background: #fdfdfe;
 }
 
+/* 划词问答抽屉 */
+.qa-drawer { position: fixed; inset: 0; z-index: 30; }
+.qa-panel { width: min(460px, 100vw); }
+.qa-head { align-items: flex-start; }
+.qa-head-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.qa-passage {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--fg-dim);
+}
+.qa-thread { display: flex; flex-direction: column; gap: 10px; }
+.qa-msg {
+  max-width: 92%;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.qa-msg.is-user {
+  align-self: flex-end;
+  border: 1px solid #cde9df;
+  background: #eef7f3;
+  color: var(--fg);
+}
+.qa-msg.is-bot { align-self: flex-start; border: 1px solid var(--line); background: var(--panel-2); }
+.qa-msg.is-busy { color: var(--fg-dim); }
+.qa-msg.is-error {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--bad);
+  background: #fff5f7;
+  color: #9f1239;
+}
+.qa-compose {
+  flex: none;
+  padding: 10px 20px 12px;
+  border-top: 1px solid var(--line);
+  background: #fdfdfe;
+}
+.qa-followups { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.qa-chip {
+  padding: 4px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.qa-chip:hover { border-color: var(--accent); color: var(--accent); }
+.qa-input-row { display: flex; align-items: center; gap: 8px; }
+.qa-input-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+}
+.qa-input-row input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.12);
+}
+.qa-deep.is-active {
+  border-color: var(--accent);
+  background: #f4fbf8;
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .field-note {
   margin: 20px 0 10px;
   font-size: 11.5px;
@@ -1177,10 +1260,15 @@ body.is-reading .study-card > * {
 .toast.is-bad { border-color: var(--bad); color: #9f1239; background: #fff5f7; }
 .toast.is-ok { border-color: var(--accent); color: #065f46; background: #f2fbf7; }
 
-/* 划词翻译：选中文字后浮出的按钮与译文卡片 */
-.trans-trigger {
+/* 划词浮标：翻译 / 提问同一套样式，按设置并排出现 */
+.select-actions {
   position: fixed;
   z-index: 40;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.select-action {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1195,9 +1283,9 @@ body.is-reading .study-card > * {
   box-shadow: 0 8px 22px rgba(16, 24, 40, 0.16);
 }
 
-.trans-trigger:hover { border-color: var(--accent); color: var(--accent); }
+.select-action:hover { border-color: var(--accent); color: var(--accent); }
 
-.trans-trigger svg {
+.select-action svg {
   width: 14px;
   height: 14px;
   fill: none;

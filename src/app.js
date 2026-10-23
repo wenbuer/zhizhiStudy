@@ -33,9 +33,15 @@ const state = {
   learnList: [],
   practice: null,
   reading: false,
-  /// 划词翻译：当前选中的文字与选区位置（fixed 定位用）
-  transText: '',
-  transRect: null,
+  /// 划词浮标：当前选中的文字与选区位置（fixed 定位用）
+  selectText: '',
+  selectRect: null,
+  learnCurrentId: null,
+  /// 划词问答：一次对话对应一个选中段落，关掉就清空（第一版不落库）
+  qa: {
+    open: false, cardId: null, passage: '', history: [], followups: [],
+    pending: '', failed: '', busy: false, error: '', deep: false,
+  },
 };
 
 const VIEW_TITLES = {
@@ -89,7 +95,7 @@ function switchView(name) {
   });
   el('viewTitle').textContent = VIEW_TITLES[name] || name;
   if (name !== 'learn' && state.reading) setReading(false);
-  if (name !== 'learn') { hideTransTrigger(); closeTransPop(); }
+  if (name !== 'learn') { hideSelectActions(); closeTransPop(); closeQaDrawer(); }
   if (name !== 'settings') closeSettingsDrawer();
   if (name === 'insight') renderGraph();
   if (name === 'quiz') renderQuiz().catch((error) => toast('测验页加载失败：' + String(error), 'bad'));
@@ -716,9 +722,10 @@ function learnedFoldHtml(learned, activeId) {
 }
 
 function renderLearn() {
-  // 换单元、换筛选都会重画正文，浮着的翻译按钮和译文卡片一起收掉
-  hideTransTrigger();
+  // 换单元、换筛选都会重画正文，浮标、译文卡片和问答抽屉一起收掉
+  hideSelectActions();
   closeTransPop();
+  if (state.qa.open) closeQaDrawer();
 
   // 素材库切换器
   const select = el('learnMaterial');
@@ -756,6 +763,7 @@ function renderLearn() {
   state.learnList = list;
   const current = list[state.learnIndex] || list[0];
   const activeId = current ? current.id : null;
+  state.learnCurrentId = activeId;
 
   if (state.learnedOnly) {
     el('learnQueue').innerHTML = learned
@@ -831,11 +839,15 @@ function translateOn() {
   return !!(state.info && state.info.translate);
 }
 
-function hideTransTrigger() {
-  const trigger = el('transTrigger');
-  if (trigger) trigger.hidden = true;
-  state.transText = '';
-  state.transRect = null;
+function qaOn() {
+  return !!(state.info && state.info.qa);
+}
+
+function hideSelectActions() {
+  const box = el('selectActions');
+  if (box) box.hidden = true;
+  state.selectText = '';
+  state.selectRect = null;
 }
 
 function closeTransPop() {
@@ -872,7 +884,7 @@ function placeTransPop(rect) {
   pop.style.top = Math.round(Math.max(8, top)) + 'px';
 }
 
-/* 只认学习正文里的选区：标题、侧栏、按钮区都不弹翻译 */
+/* 只认学习正文里的选区：标题、侧栏、按钮区都不弹浮标 */
 function selectionInLearnCard() {
   const card = el('learnCard');
   const body = card && card.querySelector('.unit-body');
@@ -887,21 +899,25 @@ function selectionInLearnCard() {
   return { text: text, rect: rect };
 }
 
-function showTransTrigger() {
-  if (!translateOn()) { hideTransTrigger(); return; }
+/* 浮标按设置决定显示哪几个动作：翻译 / 提问 */
+function showSelectActions() {
   const picked = selectionInLearnCard();
-  // 整篇选中的按下不弹：划词翻译只服务一小段
-  if (!picked || picked.text.length > 1200) { hideTransTrigger(); return; }
-  state.transText = picked.text;
-  state.transRect = picked.rect;
-  placeAbove(el('transTrigger'), picked.rect, 8);
+  if (!picked || picked.text.length > 1200) { hideSelectActions(); return; }
+  const trans = translateOn();
+  const ask = qaOn();
+  if (!trans && !ask) { hideSelectActions(); return; }
+  el('transTrigger').hidden = !trans;
+  el('askTrigger').hidden = !ask;
+  state.selectText = picked.text;
+  state.selectRect = picked.rect;
+  placeAbove(el('selectActions'), picked.rect, 8);
 }
 
 async function requestTranslation() {
-  const text = state.transText;
+  const text = state.selectText;
   if (!text) return;
-  const rect = state.transRect || { left: 0, top: 0, right: 0, bottom: 0, width: 0 };
-  hideTransTrigger();
+  const rect = state.selectRect || { left: 0, top: 0, right: 0, bottom: 0, width: 0 };
+  hideSelectActions();
   const body = el('transBody');
   body.textContent = '翻译中…';
   body.className = 'trans-body is-busy';
@@ -915,8 +931,116 @@ async function requestTranslation() {
     body.textContent = '翻译失败：' +
       (typeof error === 'string' ? error : (error && error.message) || String(error));
   }
-  // 译文长短会改变卡片高度，出结果后贴着选区再放一次
   placeTransPop(rect);
+}
+
+/* ── 划词问答 ─────────────────────────────── */
+
+const QA_QUICK = ['讲再浅一点', '举个例子', '只给结论'];
+
+function openQaDrawer() {
+  const text = state.selectText;
+  if (!text) return;
+  state.qa = {
+    open: true, cardId: state.learnCurrentId, passage: text,
+    history: [], followups: [], pending: '', failed: '', busy: false, error: '',
+    deep: state.qa.deep,
+  };
+  el('qaPassage').textContent = text;
+  el('qaPassage').title = text;
+  el('qaInput').value = '';
+  el('qaDrawer').hidden = false;
+  hideSelectActions();
+  closeTransPop();
+  renderQaThread();
+  renderQaFollowups();
+  setTimeout(() => el('qaInput').focus(), 60);
+}
+
+function closeQaDrawer() {
+  const drawer = el('qaDrawer');
+  if (drawer) drawer.hidden = true;
+  if (state.qa) state.qa.open = false;
+}
+
+function renderQaThread() {
+  const qa = state.qa;
+  const thread = el('qaThread');
+  if (!thread) return;
+  let html = qa.history.map((turn) =>
+    '<div class="qa-msg is-user">' + escapeHtml(turn.question) + '</div>' +
+    '<div class="qa-msg is-bot">' + escapeHtml(turn.answer) + '</div>').join('');
+  if (qa.busy) {
+    html += '<div class="qa-msg is-user">' + escapeHtml(qa.pending) + '</div>' +
+      '<div class="qa-msg is-bot is-busy"><span class="spinner"></span>正在想…</div>';
+  }
+  if (qa.error) {
+    html += '<div class="qa-msg is-error"><span>' + escapeHtml(qa.error) + '</span>' +
+      (qa.failed ? '<button class="btn btn-slim" type="button" data-qa-retry>重试</button>' : '') + '</div>';
+  }
+  if (!html) {
+    html = '<div class="empty">就问这段：不懂的词、为什么这样写、换个条件还成不成立。</div>';
+  }
+  thread.innerHTML = html;
+  thread.scrollTop = thread.scrollHeight;
+}
+
+function renderQaFollowups() {
+  const qa = state.qa;
+  const box = el('qaFollowups');
+  if (!box) return;
+  const items = (qa.followups || []).concat(QA_QUICK).slice(0, 6);
+  box.innerHTML = items.map((text) =>
+    '<button class="qa-chip" type="button" data-qa-ask="' + escapeHtml(text) + '">' +
+    escapeHtml(text) + '</button>').join('');
+  box.hidden = !qa.history.length || qa.busy;
+  const deep = el('qaDeepBtn');
+  if (deep) {
+    deep.classList.toggle('is-active', !!qa.deep);
+    deep.setAttribute('aria-pressed', qa.deep ? 'true' : 'false');
+  }
+}
+
+async function askQa(question) {
+  const qa = state.qa;
+  const text = (question || '').trim();
+  if (!qa.passage || qa.busy || !text) return;
+  if (state.info && !state.info.llmReady) {
+    qa.error = '还没有配置模型接口：去「设置」页填 API Key 和模型名';
+    qa.failed = '';
+    renderQaThread();
+    return;
+  }
+  qa.busy = true;
+  qa.error = '';
+  qa.failed = '';
+  qa.pending = text;
+  renderQaThread();
+  renderQaFollowups();
+  try {
+    const out = await invoke('ask_passage', {
+      cardId: qa.cardId,
+      passage: qa.passage,
+      question: text,
+      history: qa.history,
+      deep: !!qa.deep,
+    });
+    // 等结果期间又开了新一段问答的话，旧结果丢掉
+    if (state.qa !== qa) return;
+    qa.history.push({ question: text, answer: out.answer || '（模型没有返回内容）' });
+    qa.followups = (out.followups || []).slice(0, 3);
+    qa.busy = false;
+    qa.pending = '';
+  } catch (error) {
+    if (state.qa !== qa) return;
+    qa.busy = false;
+    qa.pending = '';
+    qa.failed = text;
+    qa.error = '回答失败：' +
+      (typeof error === 'string' ? error : (error && error.message) || String(error));
+  }
+  renderQaThread();
+  renderQaFollowups();
 }
 
 /* ── 考试 ─────────────────────────────────── */
@@ -1525,6 +1649,7 @@ async function loadSettings() {
   el('dataDir').textContent = (state.info && state.info.dataDir) || '';
   setSeg('#notifySeg', 'notify', s.notify !== false);
   setSeg('#translateSeg', 'translate', s.translate === true);
+  setSeg('#qaSeg', 'qa', s.qa !== false);
   refreshSettingValues();
   await loadAutostart();
 }
@@ -1601,6 +1726,7 @@ function collectSettings() {
     // notify / translate 是即时开关，不跟着表单提交；这里带上当前值，免得保存接口时被重置
     notify: !(state.settings && state.settings.notify === false),
     translate: !!(state.settings && state.settings.translate),
+    qa: !(state.settings && state.settings.qa === false),
     proxyMode: currentProxyMode(),
     proxyUrl: el('sProxyUrl').value.trim(),
     noProxy: el('sNoProxy').value.trim(),
@@ -1875,20 +2001,48 @@ function bind() {
   });
 
   // 划词翻译：正文里松开鼠标或键盘扩选后浮出「翻译」按钮
-  el('learnCard').addEventListener('mouseup', showTransTrigger);
+  el('learnCard').addEventListener('mouseup', showSelectActions);
   el('learnCard').addEventListener('keyup', (event) => {
-    if (event.shiftKey || event.key === 'Shift') showTransTrigger();
+    if (event.shiftKey || event.key === 'Shift') showSelectActions();
   });
-  el('learnCard').addEventListener('mousedown', hideTransTrigger);
-  el('learnCard').addEventListener('scroll', () => { hideTransTrigger(); closeTransPop(); });
+  el('learnCard').addEventListener('mousedown', hideSelectActions);
+  el('learnCard').addEventListener('scroll', () => { hideSelectActions(); closeTransPop(); });
 
-  el('transTrigger').addEventListener('mousedown', (event) => event.preventDefault());
+  el('selectActions').addEventListener('mousedown', (event) => event.preventDefault());
   el('transTrigger').addEventListener('click', requestTranslation);
+  el('askTrigger').addEventListener('click', openQaDrawer);
   el('transClose').addEventListener('click', closeTransPop);
 
+  document.querySelectorAll('[data-qa-close]').forEach((node) => {
+    node.addEventListener('click', closeQaDrawer);
+  });
+  el('qaSendBtn').addEventListener('click', () => {
+    const input = el('qaInput');
+    askQa(input.value);
+    input.value = '';
+  });
+  el('qaInput').addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    const input = el('qaInput');
+    askQa(input.value);
+    input.value = '';
+  });
+  el('qaDeepBtn').addEventListener('click', () => {
+    state.qa.deep = !state.qa.deep;
+    renderQaFollowups();
+    toast(state.qa.deep ? '已切到「认真想想」：会慢一些' : '已切回快速回答', 'ok');
+  });
+  el('qaFollowups').addEventListener('click', (event) => {
+    const chip = event.target.closest('[data-qa-ask]');
+    if (chip) askQa(chip.dataset.qaAsk);
+  });
+  el('qaThread').addEventListener('click', (event) => {
+    if (event.target.closest('[data-qa-retry]')) askQa(state.qa.failed);
+  });
   document.addEventListener('mousedown', (event) => {
-    if (event.target.closest('#transTrigger') || event.target.closest('#transPop')) return;
-    hideTransTrigger();
+    if (event.target.closest('#selectActions') || event.target.closest('#transPop')) return;
+    hideSelectActions();
     closeTransPop();
   });
 
@@ -1938,8 +2092,24 @@ function bind() {
       state.info = Object.assign({}, state.info, { translate: on });
       if (state.settings) state.settings.translate = on;
       setSeg('#translateSeg', 'translate', on);
-      if (!on) { hideTransTrigger(); closeTransPop(); }
+      if (!on) { hideSelectActions(); closeTransPop(); }
       toast(on ? '划词翻译已开启（每次翻译会消耗 token）' : '划词翻译已关闭', 'ok');
+    } catch (error) {
+      toast('设置失败：' + String(error), 'bad');
+    }
+  });
+
+  el('qaSeg').addEventListener('click', async (event) => {
+    const button = event.target.closest('.seg-item');
+    if (!button) return;
+    const want = button.dataset.qa === 'on';
+    try {
+      const on = await call('set_qa', { enabled: want });
+      state.info = Object.assign({}, state.info, { qa: on });
+      if (state.settings) state.settings.qa = on;
+      setSeg('#qaSeg', 'qa', on);
+      if (!on) closeQaDrawer();
+      toast(on ? '划词问答已开启（每次提问会消耗 token）' : '划词问答已关闭', 'ok');
     } catch (error) {
       toast('设置失败：' + String(error), 'bad');
     }
@@ -1986,9 +2156,11 @@ function bind() {
 
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
+      const qaDrawer = el('qaDrawer');
+      if (qaDrawer && !qaDrawer.hidden) { closeQaDrawer(); return; }
       const drawer = el('settingsDrawer');
       if (drawer && !drawer.hidden) { closeSettingsDrawer(); return; }
-      hideTransTrigger();
+      hideSelectActions();
       closeTransPop();
       if (state.reading) { setReading(false); return; }
     }

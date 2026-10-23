@@ -276,6 +276,15 @@
                 </div>
               </div>
               <div class="switch-row">
+                <span class="switch-name">划词问答
+                  <span class="info-dot" tabindex="0" data-tip="学习页选中段落后可以提问：白话回答 + 引导追问。每次提问消耗 token。">!</span>
+                </span>
+                <div class="seg" id="qaSeg">
+                  <button class="seg-item" data-qa="on">开启</button>
+                  <button class="seg-item" data-qa="off">关闭</button>
+                </div>
+              </div>
+              <div class="switch-row">
                 <span class="switch-name">开机自启
                   <span class="info-dot" tabindex="0" data-tip="登录 Windows 后自动打开致知，改动立即生效。">!</span>
                 </span>
@@ -380,10 +389,16 @@
     </main>
   </div>
 
-  <button class="trans-trigger" id="transTrigger" type="button" hidden>
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h9M8.5 3v2c0 4-2 7-5 9" /><path d="M5 9c1.5 3 4 5 7 6" /><path d="M13 21l4-10 4 10" /><path d="M14.6 17h4.8" /></svg>
-    <span>翻译</span>
-  </button>
+  <div class="select-actions" id="selectActions" hidden>
+    <button class="select-action" id="transTrigger" type="button" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h9M8.5 3v2c0 4-2 7-5 9" /><path d="M5 9c1.5 3 4 5 7 6" /><path d="M13 21l4-10 4 10" /><path d="M14.6 17h4.8" /></svg>
+      <span>翻译</span>
+    </button>
+    <button class="select-action" id="askTrigger" type="button" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" /><path d="M12 12.5v.01" /><path d="M9.8 8.6a2.4 2.4 0 1 1 4.2 1.4c-.6.7-1.8 1-1.8 2.3" /></svg>
+      <span>提问</span>
+    </button>
+  </div>
   <div class="trans-pop" id="transPop" hidden>
     <div class="trans-pop-head">
       <span>翻译</span>
@@ -392,6 +407,31 @@
       </button>
     </div>
     <div class="trans-body" id="transBody"></div>
+  </div>
+
+  <div class="qa-drawer" id="qaDrawer" hidden>
+    <div class="drawer-backdrop" data-qa-close></div>
+    <aside class="drawer-panel qa-panel" role="dialog" aria-modal="true" aria-labelledby="qaTitle">
+      <div class="drawer-head qa-head">
+        <div class="qa-head-text">
+          <h2 id="qaTitle">段落问答</h2>
+          <span class="qa-passage" id="qaPassage"></span>
+        </div>
+        <button class="drawer-close" type="button" data-qa-close aria-label="关闭">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
+      </div>
+      <div class="drawer-body qa-thread" id="qaThread"></div>
+      <div class="qa-compose">
+        <div class="qa-followups" id="qaFollowups" hidden></div>
+        <div class="qa-input-row">
+          <input id="qaInput" type="text" placeholder="问这段里不懂的地方…" />
+          <button class="btn btn-slim qa-deep" id="qaDeepBtn" type="button" aria-pressed="false"
+            title="开思考再答：慢一些，但更深">认真想想</button>
+          <button class="btn btn-primary" id="qaSendBtn" type="button">发送</button>
+        </div>
+      </div>
+    </aside>
   </div>
 
   <div class="toast" id="toast" hidden></div>

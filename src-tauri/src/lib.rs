@@ -51,6 +51,8 @@ struct AppInfo {
     version: String,
     /// 划词翻译是否开启：前端据此决定选区后要不要浮出按钮
     translate: bool,
+    /// 划词问答是否开启
+    qa: bool,
 }
 
 fn app_info_of(state: &AppState) -> AppInfo {
@@ -61,6 +63,7 @@ fn app_info_of(state: &AppState) -> AppInfo {
         model: llm.model_name().to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         translate: state.settings.read().unwrap().translate,
+        qa: state.settings.read().unwrap().qa,
     }
 }
 
@@ -337,6 +340,53 @@ fn set_translate(state: State<'_, AppState>, enabled: bool) -> Result<bool, Stri
     settings.translate = enabled;
     settings.save(&state.settings_path).map_err(err_str)?;
     Ok(settings.translate)
+}
+
+/// 划词问答开关：改动立刻落盘。
+#[tauri::command]
+fn set_qa(state: State<'_, AppState>, enabled: bool) -> Result<bool, String> {
+    let mut settings = state.settings.write().unwrap();
+    settings.qa = enabled;
+    settings.save(&state.settings_path).map_err(err_str)?;
+    Ok(settings.qa)
+}
+
+/// 划词问答：就选中的段落提问，可带上一段对话继续追问。默认关思考求快，deep 才开。
+#[tauri::command]
+async fn ask_passage(
+    state: State<'_, AppState>,
+    card_id: i64,
+    passage: String,
+    question: String,
+    history: Option<Vec<llm::AskTurn>>,
+    deep: Option<bool>,
+) -> Result<llm::AskAnswer, String> {
+    if !state.settings.read().unwrap().qa {
+        return Err("划词问答没有开启：去「设置」页打开它".into());
+    }
+    let question = question.trim().to_string();
+    if question.is_empty() {
+        return Err("先把问题写下来".into());
+    }
+    if question.chars().count() > 500 {
+        return Err("问题太长了，缩到 500 字以内再问".into());
+    }
+    let passage: String = passage.trim().chars().take(1500).collect();
+    if passage.is_empty() {
+        return Err("这段没有选中文字".into());
+    }
+    let title = state
+        .store
+        .lock()
+        .unwrap()
+        .get_card(card_id)
+        .map_err(err_str)?
+        .map(|card| card.title)
+        .unwrap_or_else(|| "当前单元".to_string());
+    let llm = state.llm.read().unwrap().clone();
+    llm.ask(&title, &passage, &question, &history.unwrap_or_default(), deep.unwrap_or(false))
+        .await
+        .map_err(err_str)
 }
 
 /// 划词翻译：选中一小段文字，让模型直译。关闭思考、限时 30 秒，求快不求长。
@@ -1382,6 +1432,8 @@ pub fn run() {
             set_notify,
             set_translate,
             translate_text,
+            set_qa,
+            ask_passage,
             create_exam,
             create_practice,
             exam_step,

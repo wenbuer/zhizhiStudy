@@ -38,6 +38,8 @@ feedback（2-4 句评语，先肯定答对的部分，再指出问题）、\
 missed（遗漏的关键点字符串数组，没有则空数组）、\
 suggestion（2-4 句理想答案）。只输出 JSON 对象。";
 
+const ASK_SYSTEM: &str = "你是一位耐心的一对一老师。用户会给你一段学习材料原文和一个不懂的问题。用大白话回答，少堆术语，必须结合原文讲，不要泛泛而谈。输出 JSON 对象：answer（150-250 字，分 3-4 句：先一句话说人话，再打个比方，最后指出对应原文哪一句）、followups（3 条可以直接点的追问，每条不超过 18 字，分别对应「讲简单点」「举具体例子」「换条件会怎样」）。只输出 JSON 对象，不要解释、不要代码块围栏。";
+
 const TRANSLATE_SYSTEM: &str = "你是翻译器。把用户选中的内容翻译成简体中文；如果原文已经是中文，就翻译成英文。只输出译文本身：不要解释、不要加引号、不要复述原文、不要写思考过程。";
 
 const EXTRACT_SYSTEM: &str = "你是资料整理助手。用户会给你一段从网页或搜索结果里抓来的原始文本，\
@@ -80,6 +82,24 @@ pub struct GradeResult {
     pub missed: Vec<String>,
     #[serde(default)]
     pub suggestion: String,
+}
+
+/// 问答历史里的一问一答：多轮追问时按顺序带回去。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AskTurn {
+    #[serde(default)]
+    pub question: String,
+    #[serde(default)]
+    pub answer: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AskAnswer {
+    #[serde(default)]
+    pub answer: String,
+    #[serde(default)]
+    pub followups: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -135,6 +155,39 @@ impl LlmClient {
             }
             Err(error) => Err(error),
         }
+    }
+
+    /// 划词问答：默认关思考、25 秒内返回；deep 才走思考模式，慢但更深入。
+    pub async fn ask(
+        &self,
+        title: &str,
+        passage: &str,
+        question: &str,
+        history: &[AskTurn],
+        deep: bool,
+    ) -> Result<AskAnswer> {
+        let messages = ask_messages(title, passage, question, history);
+        let raw = if deep {
+            self.chat_extra(messages, &self.model, 2200, 0.3, None, Some(90)).await?
+        } else {
+            let no_think = json!({ "thinking": { "type": "disabled" } });
+            match self
+                .chat_extra(messages.clone(), &self.model, 1600, 0.3, Some(no_think), Some(25))
+                .await
+            {
+                Ok(text) => text,
+                Err(error) if rejects_thinking(&error) => {
+                    self.chat_extra(messages, &self.model, 1600, 0.3, None, Some(25)).await?
+                }
+                Err(error) => return Err(error),
+            }
+        };
+        let json_text = extract_json(&raw, '{', '}')?;
+        let mut parsed: AskAnswer = serde_json::from_str(&json_text)
+            .map_err(|e| anyhow!("问答 JSON 解析失败：{e}"))?;
+        parsed.answer = parsed.answer.trim().to_string();
+        parsed.followups = parsed.followups.into_iter().take(3).collect();
+        Ok(parsed)
     }
 
     pub fn model_name(&self) -> &str {
@@ -394,6 +447,37 @@ pub fn extract_json(raw: &str, open: char, close: char) -> Result<String> {
     Ok(raw[start..=end].to_string())
 }
 
+/// 拼问答的多轮消息：段落只在第一条里带一次，历史最多回放 6 轮，省 token。
+pub fn ask_messages(title: &str, passage: &str, question: &str, history: &[AskTurn]) -> Value {
+    let mut messages = vec![json!({ "role": "system", "content": ASK_SYSTEM })];
+    let mut first = true;
+    let start = history.len().saturating_sub(6);
+    for turn in &history[start..] {
+        let content = if first {
+            format!(
+                "单元：{title}\n\n选中段落：\n{}\n\n我的问题：{}",
+                truncate(passage, 1500),
+                turn.question
+            )
+        } else {
+            turn.question.clone()
+        };
+        messages.push(json!({ "role": "user", "content": content }));
+        messages.push(json!({ "role": "assistant", "content": turn.answer }));
+        first = false;
+    }
+    let last = if first {
+        format!(
+            "单元：{title}\n\n选中段落：\n{}\n\n我的问题：{question}",
+            truncate(passage, 1500)
+        )
+    } else {
+        question.to_string()
+    };
+    messages.push(json!({ "role": "user", "content": last }));
+    Value::Array(messages)
+}
+
 /// 接口是否因为不认识 `thinking` 字段而拒绝：是的话就去掉它重试。
 fn rejects_thinking(error: &anyhow::Error) -> bool {
     let text = error.to_string().to_lowercase();
@@ -420,6 +504,32 @@ mod tests {
         let raw = format!("好的，结果如下：\n{fence}json\n[{{\"title\":\"A\"}}]\n{fence}\n希望有帮助");
         let got = extract_json(&raw, '[', ']').unwrap();
         assert_eq!(got, "[{\"title\":\"A\"}]");
+    }
+
+    #[test]
+    fn ask_messages_put_passage_in_first_turn_only() {
+        let history = vec![
+            AskTurn { question: "q1".into(), answer: "a1".into() },
+            AskTurn { question: "q2".into(), answer: "a2".into() },
+        ];
+        let messages = ask_messages("标题", "段落正文", "追问", &history);
+        let text = messages.to_string();
+        assert_eq!(text.matches("段落正文").count(), 1);
+        assert!(text.contains("q1") && text.contains("a2"));
+        assert!(messages.as_array().unwrap().last().unwrap()["content"]
+            .as_str()
+            .unwrap()
+            .contains("追问"));
+    }
+
+    #[test]
+    fn ask_messages_keeps_only_six_history_turns() {
+        let history: Vec<AskTurn> = (0..8)
+            .map(|i| AskTurn { question: format!("q{i}"), answer: format!("a{i}") })
+            .collect();
+        let text = ask_messages("t", "p", "last", &history).to_string();
+        assert!(!text.contains("q0") && !text.contains("q1"));
+        assert!(text.contains("q2") && text.contains("q7"));
     }
 
     #[test]
