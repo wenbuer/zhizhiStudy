@@ -724,6 +724,13 @@ fn save_snapshot(state: State<'_, AppState>, kind: String, svg: String) -> Resul
 
 /// 托盘菜单只有两项：把窗口叫回来，或真正退出。
 /// 左键点图标直接显示窗口，右键出菜单。
+/// 应用图标：托盘和窗口都直接读这份 PNG，不依赖平台默认图标的加载结果。
+const APP_ICON: &[u8] = include_bytes!("../icons/icon.png");
+
+fn app_icon() -> tauri::Result<tauri::image::Image<'static>> {
+    tauri::image::Image::from_bytes(APP_ICON)
+}
+
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     use tauri::menu::{Menu, MenuItem};
     use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -751,9 +758,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
                 reveal_main(tray.app_handle());
             }
         });
-    if let Some(icon) = app.default_window_icon() {
-        builder = builder.icon(icon.clone());
-    }
+    builder = builder.icon(app_icon()?);
     builder.build(app)?;
     Ok(())
 }
@@ -1403,6 +1408,10 @@ pub fn run() {
                 data_dir,
             });
             setup_tray(app)?;
+            // 窗口图标给任务栏和 Alt-Tab 用：不设的话高 DPI 下容易落到通用图标
+            if let Some(window) = app.get_webview_window("main") {
+                window.set_icon(app_icon()?)?;
+            }
             notify::register_identity(&app.config().identifier, "致知");
             notify::spawn(app.handle().clone());
             Ok(())
