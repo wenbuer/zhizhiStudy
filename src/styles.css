@@ -162,9 +162,26 @@ body {
 .grid-study { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 20px; align-items: start; }
 .grid-exam { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr); gap: 20px; align-items: start; }
 
-/* 练习页顶部的子标签：随机练习 / 单卡复习 / 错题 */
-.exam-tabs { margin-bottom: 14px; }
+/* 练习页顶部的子标签：练习 / 错题；练习里再分随机 / 指定单元 */
+.exam-tabs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
 .exam-tabs .tabs { flex-wrap: wrap; }
+
+/* 指定单元练习：左列表 + 右内容 */
+.grid-review {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.review-side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.review-main { margin: 0; }
 
 /* 错题列表 */
 .wrong-item {

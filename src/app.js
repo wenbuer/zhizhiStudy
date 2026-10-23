@@ -42,10 +42,15 @@ const state = {
     open: false, cardId: null, passage: '', history: [], followups: [],
     pending: '', failed: '', busy: false, error: '', deep: false,
   },
+  /// 练习页：练习 / 错题 两个标签，练习里再分随机 / 指定单元
+  examTab: 'practice',
+  practiceMode: 'random',
+  /// 指定单元练习的左侧清单（已学单元），按需加载
+  reviewCards: null,
 };
 
 const VIEW_TITLES = {
-  today: '开始', import: '材料', learn: '学习', exam: '练习', quiz: '测验', insight: '看板', settings: '设置',
+  today: '开始', import: '材料', learn: '学习', exam: '练习', quiz: '考试', insight: '看板', settings: '设置',
 };
 
 const el = (id) => document.getElementById(id);
@@ -98,9 +103,11 @@ function switchView(name) {
   if (name !== 'learn') { hideSelectActions(); closeTransPop(); closeQaDrawer(); }
   if (name !== 'settings') closeSettingsDrawer();
   if (name === 'insight') renderGraph();
-  if (name === 'quiz') renderQuiz().catch((error) => toast('测验页加载失败：' + String(error), 'bad'));
+  if (name === 'quiz') renderQuiz().catch((error) => toast('考试页加载失败：' + String(error), 'bad'));
   if (name === 'exam') {
-    showExamPane('practice');
+    state.examTab = 'practice';
+    state.practiceMode = 'random';
+    showExamTab('practice');
     renderExam().catch((error) => toast('练习页加载失败：' + String(error), 'bad'));
   }
   if (name === 'import') renderMaterials();
@@ -125,8 +132,11 @@ async function refresh() {
   state.recent = results[3];
   state.exams = results[4];
   state.cards = state.queue.fresh.concat(state.queue.due);
-  // 学完 / 复习让「已学」数量变了，已学清单的缓存跟着作废，下次展开重新取
-  if (learnedBefore !== state.queue.stats.learned) state.learned = null;
+  // 学完 / 复习让「已学」数量变了，已学清单与指定单元练习的缓存一起作废
+  if (learnedBefore !== state.queue.stats.learned) {
+    state.learned = null;
+    state.reviewCards = null;
+  }
   renderChrome();
   renderToday();
   renderMaterials();
@@ -799,7 +809,7 @@ function renderLearn() {
       '这一节的考点还在生成中，稍后刷新即可。</p></div>';
   // 测验答错/答漏的要点，交卷时写回卡上
   const quizNotes = (current.examNotes || []).length
-    ? '<div class="unit-points unit-notes"><div class="grade-sub">测验里错过的点</div>' +
+    ? '<div class="unit-points unit-notes"><div class="grade-sub">考试里错过的点</div>' +
       '<ul class="grade-list">' +
       current.examNotes.map((note) => '<li>' + escapeHtml(note) + '</li>').join('') +
       '</ul></div>'
@@ -1045,27 +1055,35 @@ async function askQa(question) {
 
 /* ── 考试 ─────────────────────────────────── */
 
-async function loadExamCard(cardId, mode) {
-  let card = state.cards.find((c) => c.id === cardId);
-  if (!card) {
-    const all = await call('list_cards', {});
-    state.cards = all;
-    card = all.find((c) => c.id === cardId);
-  }
-  if (!card) { toast('找不到这张卡', 'bad'); return; }
+/* 填单卡复习面板；列表里点选时只换卡，不重进页面 */
+function showExamCard(card, mode) {
   state.examCard = card;
   state.examMode = mode || 'exam';
   el('examHeading').textContent = card.title;
   el('examSource').textContent = card.materialTitle + ' · 到期 ' + card.due + ' · 已复习 ' + card.reps + ' 次';
   el('examQuestion').textContent = card.question || '（这张卡没有题目，可先学一遍再自评）';
   el('examNotesPanel').innerHTML = (card.examNotes || []).length
-    ? '<div class="unit-notes"><div class="grade-sub">测验里错过的点</div><ul class="grade-list">' +
+    ? '<div class="unit-notes"><div class="grade-sub">考试里错过的点</div><ul class="grade-list">' +
       card.examNotes.map((note) => '<li>' + escapeHtml(note) + '</li>').join('') + '</ul></div>'
     : '';
   el('examAnswer').value = '';
   el('gradeBlock').hidden = true;
+}
+
+async function loadExamCard(cardId, mode) {
+  let card = state.cards.find((c) => c.id === cardId)
+    || (state.reviewCards || []).find((c) => c.id === cardId);
+  if (!card) {
+    const all = await call('list_cards', {});
+    state.cards = all;
+    card = all.find((c) => c.id === cardId);
+  }
+  if (!card) { toast('找不到这张卡', 'bad'); return; }
   switchView('exam');
-  showExamPane('card');
+  state.examTab = 'practice';
+  state.practiceMode = 'unit';
+  showExamCard(card, mode);
+  showExamTab('practice');
 }
 
 async function submitGrade() {
@@ -1115,21 +1133,73 @@ function practiceState() {
   return state.practice;
 }
 
-/* 练习页的三个子标签：随机练习 / 单卡复习 / 错题 */
+/* 练习页顶部标签：练习 / 错题；练习里再分随机与指定单元 */
 function showExamTab(name) {
-  const tab = ['practice', 'card', 'wrong'].indexOf(name) >= 0 ? name : 'practice';
-  el('practiceWrap').hidden = tab !== 'practice';
-  el('cardWrap').hidden = tab !== 'card';
-  el('wrongWrap').hidden = tab !== 'wrong';
+  state.examTab = name === 'wrong' ? 'wrong' : 'practice';
   document.querySelectorAll('#examTabs .tab').forEach((node) => {
-    node.classList.toggle('is-active', node.dataset.examTab === tab);
+    node.classList.toggle('is-active', node.dataset.examTab === state.examTab);
   });
-  if (tab === 'wrong') renderWrongPane();
+  renderExamMode();
+  if (state.examTab === 'wrong') renderWrongPane();
 }
 
-/* 旧调用名保留：开始页 / 学完去练习都走这里 */
-function showExamPane(name) {
-  showExamTab(name);
+function renderExamMode() {
+  const practice = state.examTab === 'practice';
+  const unit = state.practiceMode === 'unit';
+  el('practiceWrap').hidden = !(practice && !unit);
+  el('unitWrap').hidden = !(practice && unit);
+  el('wrongWrap').hidden = state.examTab !== 'wrong';
+  el('practiceMode').hidden = !practice;
+  document.querySelectorAll('#practiceMode .seg-item').forEach((node) => {
+    node.classList.toggle('is-active', node.dataset.mode === state.practiceMode);
+  });
+  if (practice && unit) renderUnitList();
+}
+
+async function ensureReviewCards() {
+  if (state.reviewCards) return state.reviewCards;
+  state.reviewCards = await call('learned_cards', {});
+  return state.reviewCards;
+}
+
+async function renderUnitList() {
+  const list = el('unitList');
+  list.innerHTML = '<div class="empty">正在读取单元…</div>';
+  let cards = [];
+  try {
+    cards = await ensureReviewCards();
+  } catch (error) {
+    list.innerHTML = '<div class="empty">读取单元失败，稍后再试</div>';
+    return;
+  }
+  if (!cards.length) {
+    list.innerHTML = '<div class="empty">还没有学过的单元，学完再来练。</div>';
+    return;
+  }
+  const groups = [];
+  const index = {};
+  cards.forEach((card) => {
+    const key = card.section || '未分类';
+    if (!index[key]) { index[key] = { name: key, items: [] }; groups.push(index[key]); }
+    index[key].items.push(card);
+  });
+  list.innerHTML = groups.map((group) =>
+    '<div class="unit-group">' +
+    '<div class="unit-group-title"><span>' + escapeHtml(group.name) + '</span><span>' +
+    group.items.length + '</span></div>' +
+    group.items.map((card) =>
+      '<div class="row' + (state.examCard && state.examCard.id === card.id ? ' is-active' : '') +
+      '" data-review-card="' + card.id + '">' +
+      '<div class="row-main"><div class="row-title">' + escapeHtml(card.title) +
+      '</div></div></div>').join('') +
+    '</div>').join('');
+}
+
+function selectReviewCard(id) {
+  const card = (state.reviewCards || []).find((c) => c.id === id);
+  if (!card) return;
+  showExamCard(card, 'exam');
+  renderUnitList();
 }
 
 function renderWrongPane() {
@@ -1139,7 +1209,7 @@ function renderWrongPane() {
     .then((items) => {
       if (!items.length) {
         el('wrongHint').textContent = '';
-        list.innerHTML = '<div class="empty">还没有错题。练习或测验里没拿满分的题会收在这里。</div>';
+        list.innerHTML = '<div class="empty">还没有错题。练习或考试里没拿满分的题会收在这里。</div>';
         return;
       }
       el('wrongHint').textContent = items.length + ' 道';
@@ -1160,7 +1230,7 @@ function wrongItemHTML(entry) {
     '<span class="wrong-title">' + escapeHtml(item.stem || '（题干缺失）') + '</span>' +
     '<span class="wrong-score">' + score + ' / ' + item.points + '</span></div>' +
     '<div class="wrong-meta">' + escapeHtml(entry.examTitle) + ' · ' +
-    (entry.examKind === 'practice' ? '练习' : '测验') + ' · ' +
+    (entry.examKind === 'practice' ? '练习' : '考试') + ' · ' +
     escapeHtml((entry.createdAt || '').slice(0, 10)) + '</div>' +
     (item.userAnswer ? '<div class="wrong-line"><b>你的答案</b>' + escapeHtml(item.userAnswer) + '</div>' : '') +
     '<div class="wrong-line"><b>参考答案</b>' + escapeHtml(item.answer || '（暂无）') + '</div>' +
@@ -1614,7 +1684,7 @@ function renderQuizHistory() {
         (exam.status === 'done' ? '' : ' · 未交卷') + '</div></div>' +
         '<div class="row-side">' + (exam.score == null ? '—' : exam.score + ' / ' + exam.fullScore) + '</div>' +
         '<button class="btn btn-slim" data-quiz-del="' + exam.id + '">删除</button></div>').join('')
-    : '<div class="empty">还没有测验记录。出第一份卷子试试。</div>';
+    : '<div class="empty">还没有考试记录。出第一份卷子试试。</div>';
 }
 
 function kindLabel(kind) {
@@ -1832,6 +1902,16 @@ function bind() {
     const tab = event.target.closest('[data-exam-tab]');
     if (tab) showExamTab(tab.dataset.examTab);
   });
+  el('practiceMode').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-mode]');
+    if (!button) return;
+    state.practiceMode = button.dataset.mode;
+    renderExamMode();
+  });
+  el('unitList').addEventListener('click', (event) => {
+    const row = event.target.closest('[data-review-card]');
+    if (row) selectReviewCard(Number(row.dataset.reviewCard));
+  });
 
   document.addEventListener('click', async (event) => {
     const row = event.target.closest('[data-card]');
@@ -1843,7 +1923,7 @@ function bind() {
     const quizDel = event.target.closest('[data-quiz-del]');
     if (quizDel) {
       event.stopPropagation();
-      if (!confirm('删除这次测验记录？')) return;
+      if (!confirm('删除这次考试记录？')) return;
       await call('delete_exam', { examId: Number(quizDel.dataset.quizDel) });
       toast('已删除', 'ok');
       await refresh();
@@ -2225,7 +2305,7 @@ function bind() {
     if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
       event.preventDefault();
       if (state.view === 'exam') {
-        if (!el('cardWrap').hidden) submitGrade();
+        if (!el('unitWrap').hidden) submitGrade();
         else if (practiceState().view === 'paper') submitPractice();
       }
     }

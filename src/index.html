@@ -36,7 +36,7 @@
         </button>
         <button class="nav-item" data-view="quiz">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v16H7zM10 8h4M10 12h4M10 16h2" /></svg>
-          <span>测验</span>
+          <span>考试</span>
         </button>
         <button class="nav-item" data-view="import">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v10M8 11l4 4 4-4M5 19h14" /></svg>
@@ -206,9 +206,12 @@
       <section class="view" data-view="exam">
         <div class="exam-tabs">
           <div class="tabs" id="examTabs">
-            <button class="tab is-active" data-exam-tab="practice">随机练习</button>
-            <button class="tab" data-exam-tab="card">单卡复习</button>
+            <button class="tab is-active" data-exam-tab="practice">练习</button>
             <button class="tab" data-exam-tab="wrong">错题</button>
+          </div>
+          <div class="seg exam-mode" id="practiceMode">
+            <button class="seg-item is-active" data-mode="random">随机练习</button>
+            <button class="seg-item" data-mode="unit">指定单元练习</button>
           </div>
         </div>
 
@@ -217,37 +220,44 @@
           <div class="col-side" id="practiceSide"></div>
         </div>
 
-        <div class="grid-exam" id="cardWrap" hidden>
-          <div class="block">
-            <div class="block-head">
-              <h2 id="examHeading">题目</h2>
-              <span class="block-hint" id="examSource"></span>
-            </div>
-            <p class="exam-question" id="examQuestion">点击右侧「开始一道题」</p>
-            <div id="examNotesPanel"></div>
-            <label class="field">
-              <span class="field-label">你的回答</span>
-              <textarea id="examAnswer" rows="9" placeholder="用自己的话作答，讲清机制、取舍与实践"></textarea>
-            </label>
-            <div class="field-row field-row-end">
-              <span class="kbd-hint">Ctrl + Enter 提交</span>
-              <button class="btn btn-primary" id="gradeBtn">提交并评判</button>
-            </div>
-          </div>
-          <div class="col-side">
+        <div class="grid-review" id="unitWrap" hidden>
+          <aside class="review-side">
+            <div class="block-head"><h2>学习单元</h2></div>
+            <div class="list list-compact" id="unitList"></div>
+          </aside>
+
+          <div class="grid-exam review-main">
             <div class="block">
-              <div class="block-head"><h2>自评复习</h2></div>
-              <p class="block-note" id="selfNote">答完题由模型评分并自动排期；也可直接自评四档。</p>
-              <div class="rate-grid" id="rateGrid">
-                <button class="btn btn-rate" data-rating="1">忘记</button>
-                <button class="btn btn-rate" data-rating="2">有点难</button>
-                <button class="btn btn-rate" data-rating="3">记得</button>
-                <button class="btn btn-rate" data-rating="4">太简单</button>
+              <div class="block-head">
+                <h2 id="examHeading">题目</h2>
+                <span class="block-hint" id="examSource"></span>
+              </div>
+              <p class="exam-question" id="examQuestion">从左侧选一个单元开始</p>
+              <div id="examNotesPanel"></div>
+              <label class="field">
+                <span class="field-label">你的回答</span>
+                <textarea id="examAnswer" rows="9" placeholder="用自己的话作答，讲清机制、取舍与实践"></textarea>
+              </label>
+              <div class="field-row field-row-end">
+                <span class="kbd-hint">Ctrl + Enter 提交</span>
+                <button class="btn btn-primary" id="gradeBtn">提交并评判</button>
               </div>
             </div>
-            <div class="block" id="gradeBlock" hidden>
-              <div class="block-head"><h2>评判结果</h2><span class="score-pill" id="scorePill"></span></div>
-              <div id="gradeBody"></div>
+            <div class="col-side">
+              <div class="block">
+                <div class="block-head"><h2>自评复习</h2></div>
+                <p class="block-note" id="selfNote">答完题由模型评分并自动排期；也可直接自评四档。</p>
+                <div class="rate-grid" id="rateGrid">
+                  <button class="btn btn-rate" data-rating="1">忘记</button>
+                  <button class="btn btn-rate" data-rating="2">有点难</button>
+                  <button class="btn btn-rate" data-rating="3">记得</button>
+                  <button class="btn btn-rate" data-rating="4">太简单</button>
+                </div>
+              </div>
+              <div class="block" id="gradeBlock" hidden>
+                <div class="block-head"><h2>评判结果</h2><span class="score-pill" id="scorePill"></span></div>
+                <div id="gradeBody"></div>
+              </div>
             </div>
           </div>
         </div>
@@ -269,7 +279,7 @@
         </div>
         <div class="block" id="quizHistory">
           <div class="block-head">
-            <h2>测验记录</h2>
+            <h2>考试记录</h2>
             <span class="block-hint" id="quizHistoryHint"></span>
           </div>
           <div class="list list-compact" id="quizHistoryList"></div>
