@@ -22,6 +22,10 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h7" /></svg>
           <span>开始</span>
         </button>
+        <button class="nav-item" data-view="insight">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5M4 19h16M8 15l3-4 3 3 4-6" /></svg>
+          <span>看板</span>
+        </button>
         <button class="nav-item" data-view="learn">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h7v14H4zM13 5h7v14h-7z" /></svg>
           <span>学习</span>
@@ -33,10 +37,6 @@
         <button class="nav-item" data-view="quiz">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v16H7zM10 8h4M10 12h4M10 16h2" /></svg>
           <span>测验</span>
-        </button>
-        <button class="nav-item" data-view="insight">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5M4 19h16M8 15l3-4 3 3 4-6" /></svg>
-          <span>看板</span>
         </button>
         <button class="nav-item" data-view="import">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v10M8 11l4 4 4-4M5 19h14" /></svg>
@@ -73,6 +73,27 @@
           <div class="col-main">
             <div class="block" id="todayFocus"></div>
             <div class="block" id="planBlock"></div>
+            <div class="block">
+              <div class="block-head">
+                <h2>学习结构</h2>
+                <span class="block-hint">从材料到掌握，五步</span>
+              </div>
+              <div class="flow">
+                <div class="flow-step"><span class="flow-num">1</span><span>导入材料</span></div>
+                <span class="flow-arrow">→</span>
+                <div class="flow-step"><span class="flow-num">2</span><span>拆成单元</span></div>
+                <span class="flow-arrow">→</span>
+                <div class="flow-step"><span class="flow-num">3</span><span>按计划学</span></div>
+                <span class="flow-arrow">→</span>
+                <div class="flow-step"><span class="flow-num">4</span><span>到期复习</span></div>
+                <span class="flow-arrow">→</span>
+                <div class="flow-step"><span class="flow-num">5</span><span>练习检验</span></div>
+              </div>
+              <div class="field-row field-row-end" style="margin-top:14px">
+                <button class="btn" data-action="go-insight">看学习看板</button>
+                <button class="btn" data-action="go-learn">去学习</button>
+              </div>
+            </div>
           </div>
           <div class="col-side">
             <div class="block">
@@ -183,6 +204,14 @@
 
       <!-- 练习 -->
       <section class="view" data-view="exam">
+        <div class="exam-tabs">
+          <div class="tabs" id="examTabs">
+            <button class="tab is-active" data-exam-tab="practice">随机练习</button>
+            <button class="tab" data-exam-tab="card">单卡复习</button>
+            <button class="tab" data-exam-tab="wrong">错题</button>
+          </div>
+        </div>
+
         <div class="grid-exam" id="practiceWrap">
           <div class="col-main" id="practiceMain"></div>
           <div class="col-side" id="practiceSide"></div>
@@ -221,6 +250,14 @@
               <div id="gradeBody"></div>
             </div>
           </div>
+        </div>
+
+        <div class="block" id="wrongWrap" hidden>
+          <div class="block-head">
+            <h2>错题</h2>
+            <span class="block-hint" id="wrongHint"></span>
+          </div>
+          <div class="list" id="wrongList"></div>
         </div>
       </section>
 

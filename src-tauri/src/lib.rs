@@ -1168,6 +1168,20 @@ fn list_exams(state: State<'_, AppState>) -> Result<Vec<store::Exam>, String> {
     state.store.lock().unwrap().list_exams(50).map_err(err_str)
 }
 
+/// 错题：练习 / 测验里作答过但没拿满分的题。
+#[tauri::command]
+fn list_wrong_items(
+    state: State<'_, AppState>,
+    limit: Option<i64>,
+) -> Result<Vec<store::WrongItem>, String> {
+    state
+        .store
+        .lock()
+        .unwrap()
+        .wrong_items(limit.unwrap_or(50).clamp(1, 200))
+        .map_err(err_str)
+}
+
 #[tauri::command]
 fn save_exam_answer(state: State<'_, AppState>, item_id: i64, answer: String) -> Result<(), String> {
     state.store.lock().unwrap().save_exam_answer(item_id, &answer).map_err(err_str)
@@ -1448,6 +1462,7 @@ pub fn run() {
             exam_step,
             get_exam,
             list_exams,
+            list_wrong_items,
             save_exam_answer,
             submit_exam,
             delete_exam,

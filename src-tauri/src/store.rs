@@ -666,6 +666,25 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
+    /// 错题：作答过但没拿满分的题（练习和测验都算），按出卷时间倒序。
+    pub fn wrong_items(&self, limit: i64) -> Result<Vec<WrongItem>> {
+        let sql = "SELECT i.*, e.title AS exam_title, e.kind AS exam_kind, e.created_at AS exam_created
+                   FROM exam_items i JOIN exams e ON e.id = i.exam_id
+                   WHERE TRIM(i.user_answer) <> '' AND i.score IS NOT NULL AND i.score < i.points - 0.001
+                   ORDER BY e.id DESC, i.seq ASC LIMIT ?1";
+        let mut stmt = self.conn.prepare(sql)?;
+        let rows = stmt.query_map(params![limit], |r| {
+            let item = Self::map_exam_item(r)?;
+            Ok(WrongItem {
+                exam_title: r.get("exam_title").unwrap_or_default(),
+                exam_kind: r.get("exam_kind").unwrap_or_else(|_| "quiz".to_string()),
+                created_at: r.get("exam_created").unwrap_or_default(),
+                item,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
     pub fn save_exam_answer(&self, item_id: i64, answer: &str) -> Result<()> {
         self.conn.execute(
             "UPDATE exam_items SET user_answer = ?2 WHERE id = ?1",
@@ -793,6 +812,17 @@ pub struct Exam {
     pub kind: String,
     /// 已经出好的题数（stem 非空）
     pub made: i64,
+}
+
+/// 错题列表里的一条：卷子信息 + 题目本身。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WrongItem {
+    pub exam_title: String,
+    /// quiz = 测验页出的卷子，practice = 练习页的随机练习
+    pub exam_kind: String,
+    pub created_at: String,
+    pub item: ExamItem,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -981,6 +1011,24 @@ mod tests {
         let today = store.plan_today(plan).unwrap().unwrap();
         assert!(today.day_units.is_empty());
         assert_eq!(today.remaining_units, 0);
+    }
+
+    /// 错题只收作答过、且没拿满分的题；跳过不答的不算。
+    #[test]
+    fn wrong_items_keep_only_answered_and_lost_points() {
+        let store = temp_store("wrong-items");
+        let exam = store
+            .create_exam("卷", None, &[], &["single".to_string()], &[2.0], "2026-10-10", &[], "practice")
+            .unwrap();
+        let id = store.exam_items(exam).unwrap()[0].id;
+        store.fill_exam_item(id, "题干", &[], "B", "解析").unwrap();
+        store.save_exam_answer(id, "A").unwrap();
+        store.grade_exam_item(id, 0.0, "wrong", "", &[], "").unwrap();
+
+        let wrong = store.wrong_items(10).unwrap();
+        assert_eq!(wrong.len(), 1);
+        assert_eq!(wrong[0].item.answer, "B");
+        assert_eq!(wrong[0].exam_title, "卷");
     }
 
     /// 学过的单元离开待学队列后，仍能在已学清单里原样找回来。

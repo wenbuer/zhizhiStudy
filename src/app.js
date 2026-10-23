@@ -1115,9 +1115,58 @@ function practiceState() {
   return state.practice;
 }
 
+/* 练习页的三个子标签：随机练习 / 单卡复习 / 错题 */
+function showExamTab(name) {
+  const tab = ['practice', 'card', 'wrong'].indexOf(name) >= 0 ? name : 'practice';
+  el('practiceWrap').hidden = tab !== 'practice';
+  el('cardWrap').hidden = tab !== 'card';
+  el('wrongWrap').hidden = tab !== 'wrong';
+  document.querySelectorAll('#examTabs .tab').forEach((node) => {
+    node.classList.toggle('is-active', node.dataset.examTab === tab);
+  });
+  if (tab === 'wrong') renderWrongPane();
+}
+
+/* 旧调用名保留：开始页 / 学完去练习都走这里 */
 function showExamPane(name) {
-  el('practiceWrap').hidden = name !== 'practice';
-  el('cardWrap').hidden = name !== 'card';
+  showExamTab(name);
+}
+
+function renderWrongPane() {
+  const list = el('wrongList');
+  list.innerHTML = '<div class="empty">正在读取错题…</div>';
+  call('list_wrong_items', { limit: 50 })
+    .then((items) => {
+      if (!items.length) {
+        el('wrongHint').textContent = '';
+        list.innerHTML = '<div class="empty">还没有错题。练习或测验里没拿满分的题会收在这里。</div>';
+        return;
+      }
+      el('wrongHint').textContent = items.length + ' 道';
+      list.innerHTML = items.map(wrongItemHTML).join('');
+    })
+    .catch(() => {
+      list.innerHTML = '<div class="empty">读取错题失败，稍后再试</div>';
+    });
+}
+
+function wrongItemHTML(entry) {
+  const item = entry.item;
+  const score = item.score == null ? 0 : item.score;
+  const missed = (item.missed || []).map((m) => '<li>' + escapeHtml(m) + '</li>').join('');
+  return '<div class="wrong-item">' +
+    '<div class="wrong-head">' +
+    '<span class="quiz-kind">' + escapeHtml(kindLabel(item.kind)) + '</span>' +
+    '<span class="wrong-title">' + escapeHtml(item.stem || '（题干缺失）') + '</span>' +
+    '<span class="wrong-score">' + score + ' / ' + item.points + '</span></div>' +
+    '<div class="wrong-meta">' + escapeHtml(entry.examTitle) + ' · ' +
+    (entry.examKind === 'practice' ? '练习' : '测验') + ' · ' +
+    escapeHtml((entry.createdAt || '').slice(0, 10)) + '</div>' +
+    (item.userAnswer ? '<div class="wrong-line"><b>你的答案</b>' + escapeHtml(item.userAnswer) + '</div>' : '') +
+    '<div class="wrong-line"><b>参考答案</b>' + escapeHtml(item.answer || '（暂无）') + '</div>' +
+    (item.explain ? '<div class="wrong-line"><b>解析</b>' + escapeHtml(item.explain) + '</div>' : '') +
+    (missed ? '<div class="wrong-line"><b>遗漏</b><ul class="grade-list">' + missed + '</ul></div>' : '') +
+    '</div>';
 }
 
 /* 打开练习页：有没交卷的练习就接着做，否则给一个「开始练习」的入口 */
@@ -1779,6 +1828,11 @@ function bind() {
     if (button) switchView(button.dataset.view);
   });
 
+  el('examTabs').addEventListener('click', (event) => {
+    const tab = event.target.closest('[data-exam-tab]');
+    if (tab) showExamTab(tab.dataset.examTab);
+  });
+
   document.addEventListener('click', async (event) => {
     const row = event.target.closest('[data-card]');
     const learnRow = event.target.closest('[data-learn]');
@@ -1880,6 +1934,10 @@ function bind() {
         if (first) await openLearnUnit(first.id);
       } else if (name === 'go-import') {
         switchView('import');
+      } else if (name === 'go-insight') {
+        switchView('insight');
+      } else if (name === 'go-learn') {
+        switchView('learn');
       } else if (name === 'learn-next') {
         // 「只看已学」就在已学清单里翻页，平时跳过折叠区的已学单元
         const list = state.learnList || [];
