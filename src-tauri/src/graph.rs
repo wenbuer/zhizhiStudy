@@ -462,6 +462,133 @@ pub fn review_plan(forecast: &[(String, i64)], today: &str, queue: &[Card], lear
     s
 }
 
+/// 开始页用：未来 30 天每日到期量，单独一张小图。
+pub fn due_chart(forecast: &[(String, i64)], today: &str) -> String {
+    let width = 640.0f64;
+    let height = 260.0f64;
+    let left = 52.0f64;
+    let right = width - 18.0;
+    let top = 34.0f64;
+    let bottom = height - 36.0;
+    let days = 30usize;
+    let slot = (right - left) / days as f64;
+    let max_count = forecast.iter().map(|(_, n)| *n).max().unwrap_or(1).max(1) as f64;
+
+    let mut dates = Vec::with_capacity(days);
+    for i in 0..days {
+        dates.push(crate::srs::add_days(today, i as i64));
+    }
+    let counts: Vec<i64> = dates
+        .iter()
+        .map(|d| forecast.iter().find(|(dd, _)| dd == d).map(|(_, n)| *n).unwrap_or(0))
+        .collect();
+
+    let mut s = svg_open(width, height);
+    s.push_str(&text(left, 18.0, 12.0, MUTED, "400", "start", "左轴：每天到期张数"));
+    for g in 0..=2 {
+        let gy = bottom - (bottom - top) * (g as f64) / 2.0;
+        let val = (max_count * (g as f64) / 2.0).round() as i64;
+        s.push_str(&format!(
+            "<line x1=\"{left}\" y1=\"{gy}\" x2=\"{right}\" y2=\"{gy}\" stroke=\"{LINE}\" stroke-dasharray=\"3 6\"/>"
+        ));
+        s.push_str(&text(left - 8.0, gy + 4.0, 11.0, MUTED, "400", "end", &val.to_string()));
+    }
+    for (i, count) in counts.iter().enumerate() {
+        let bar_h = if max_count > 0.0 { (bottom - top) * (*count as f64) / max_count } else { 0.0 };
+        let x = left + i as f64 * slot + slot * 0.2;
+        let w = slot * 0.6;
+        let y = bottom - bar_h;
+        let color = if i == 0 { WARN } else if *count == 0 { LINE } else { ACCENT };
+        let h = if *count == 0 { 2.0 } else { bar_h.max(2.0) };
+        s.push_str(&format!(
+            "<rect x=\"{x:.1}\" y=\"{y:.1}\" width=\"{w:.1}\" height=\"{h:.1}\" rx=\"3\" fill=\"{color}\"/>"
+        ));
+        if i % 5 == 0 || i == 0 {
+            s.push_str(&text(x + w / 2.0, bottom + 18.0, 10.5, MUTED, "400", "middle", &dates[i][5..]));
+        }
+    }
+    s.push_str("</svg>");
+    s
+}
+
+/// 开始页用：未来 30 天平均记忆保持率，单独一张小图。
+pub fn retention_chart(learned: &[Card], today: &str) -> String {
+    let width = 640.0f64;
+    let height = 260.0f64;
+    let left = 52.0f64;
+    let right = width - 18.0;
+    let top = 42.0f64;
+    let bottom = height - 36.0;
+    let days = 30usize;
+    let slot = (right - left) / days as f64;
+
+    let histories: Vec<(f64, f64)> = learned
+        .iter()
+        .filter(|c| c.learned && c.stability > 0.0)
+        .filter_map(|c| Some((c.stability, days_since(c.last_review.as_deref()?, today)?.max(0.0))))
+        .collect();
+    let curve: Vec<f64> = (0..days)
+        .map(|i| {
+            if histories.is_empty() {
+                0.0
+            } else {
+                histories.iter().map(|(s, e)| retention(*s, e + i as f64)).sum::<f64>()
+                    / histories.len() as f64
+            }
+        })
+        .collect();
+
+    let mut s = svg_open(width, height);
+    let note = if histories.is_empty() {
+        "还没有复习记录：学几张卡、复习一次就会长出曲线".to_string()
+    } else {
+        format!("{} 张已学卡的平均保持率（之后不再复习）", histories.len())
+    };
+    s.push_str(&text(left, 18.0, 11.5, MUTED, "400", "start", &note));
+    for (val, label) in [(0.0, "0%"), (0.5, "50%"), (1.0, "100%")] {
+        let gy = bottom - (bottom - top) * val;
+        s.push_str(&format!(
+            "<line x1=\"{left}\" y1=\"{gy}\" x2=\"{right}\" y2=\"{gy}\" stroke=\"{LINE}\" stroke-dasharray=\"3 6\"/>"
+        ));
+        s.push_str(&text(left - 8.0, gy + 4.0, 11.0, MUTED, "400", "end", label));
+    }
+    let y90 = bottom - (bottom - top) * 0.9;
+    s.push_str(&format!(
+        "<line x1=\"{left}\" y1=\"{y90}\" x2=\"{right}\" y2=\"{y90}\" stroke=\"{WARN}\" stroke-dasharray=\"6 5\"/>"
+    ));
+    s.push_str(&text(right - 4.0, y90 - 5.0, 10.5, WARN, "400", "end", "90% 复习线"));
+    if histories.is_empty() {
+        s.push_str(&text(left + 12.0, (top + bottom) / 2.0, 12.5, MUTED, "400", "start", "暂无曲线"));
+    } else {
+        let mut points = String::new();
+        for (i, keep) in curve.iter().enumerate() {
+            let x = left + i as f64 * slot + slot / 2.0;
+            let y = bottom - (bottom - top) * keep.clamp(0.0, 1.0);
+            points.push_str(&format!("{x:.1},{y:.1} "));
+        }
+        s.push_str(&format!(
+            "<polyline points=\"{}\" fill=\"none\" stroke=\"{ACCENT}\" stroke-width=\"2\" stroke-linejoin=\"round\" stroke-linecap=\"round\"/>",
+            points.trim_end()
+        ));
+        let first = curve[0];
+        let last = curve[days - 1];
+        let start_y = bottom - (bottom - top) * first;
+        let end_y = bottom - (bottom - top) * last;
+        s.push_str(&format!(
+            "<circle cx=\"{x:.1}\" cy=\"{start_y:.1}\" r=\"3.5\" fill=\"{ACCENT}\"/>",
+            x = left + slot / 2.0
+        ));
+        s.push_str(&text(left + slot / 2.0 + 8.0, start_y + 16.0, 11.0, MUTED, "400", "start", &format!("今天 {:.0}%", first * 100.0)));
+        s.push_str(&format!(
+            "<circle cx=\"{x:.1}\" cy=\"{end_y:.1}\" r=\"3.5\" fill=\"{ACCENT}\"/>",
+            x = right - slot / 2.0
+        ));
+        s.push_str(&text(right - 2.0, end_y + 18.0, 11.0, MUTED, "400", "end", &format!("30 天后 {:.0}%", last * 100.0)));
+    }
+    s.push_str("</svg>");
+    s
+}
+
 /// 阶段指导：当前阶段、关键指标与下一步建议。
 pub fn stage_guide(stats: &Stats, cards: &[Card], today: &str) -> String {
     let stages = ["入门", "铺开", "巩固", "精通"];
@@ -655,6 +782,27 @@ mod tests {
         let svg = review_plan(&[], "2026-10-10", &[], &[]);
         assert!(svg.contains("今天没有要复习的卡"));
         assert!(svg.contains("记忆保持率"));
+    }
+
+    #[test]
+    fn start_page_charts_render_standalone() {
+        let mut c = card(1, 1, true, "2026-10-10", 2);
+        c.last_review = Some("2026-10-01T09:00:00".into());
+        c.stability = 10.0;
+        let forecast = vec![("2026-10-10".to_string(), 3)];
+        let bars = due_chart(&forecast, "2026-10-10");
+        assert!(bars.starts_with("<svg"));
+        assert!(bars.contains("每天到期张数"));
+        let curve = retention_chart(&[c], "2026-10-10");
+        assert!(curve.contains("90% 复习线"));
+        assert!(curve.contains("<polyline"));
+        // 想让开始页预览用真图：设 ZHIZHI_CHART_DIR 指向一个目录再跑这条测试
+        if let Some(dir) = std::env::var_os("ZHIZHI_CHART_DIR") {
+            let dir = std::path::PathBuf::from(dir);
+            let _ = std::fs::create_dir_all(&dir);
+            let _ = std::fs::write(dir.join("due.svg"), &bars);
+            let _ = std::fs::write(dir.join("retention.svg"), &curve);
+        }
     }
 
     #[test]

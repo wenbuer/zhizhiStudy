@@ -69,36 +69,44 @@
 
       <!-- 今日 -->
       <section class="view is-active" data-view="today">
-        <div class="grid-today">
-          <div class="col-main">
+        <div class="today-scroll">
+          <div class="today-top">
             <div class="block" id="todayFocus"></div>
-            <div class="block" id="planBlock"></div>
-            <div class="block">
+            <div class="block" id="chapterBlock">
               <div class="block-head">
-                <h2>学习结构</h2>
-                <span class="block-hint">从材料到掌握，五步</span>
+                <h2>章节进度</h2>
+                <span class="block-hint" id="chapterHint"></span>
               </div>
-              <div class="flow">
-                <div class="flow-step"><span class="flow-num">1</span><span>导入材料</span></div>
-                <span class="flow-arrow">→</span>
-                <div class="flow-step"><span class="flow-num">2</span><span>拆成单元</span></div>
-                <span class="flow-arrow">→</span>
-                <div class="flow-step"><span class="flow-num">3</span><span>按计划学</span></div>
-                <span class="flow-arrow">→</span>
-                <div class="flow-step"><span class="flow-num">4</span><span>到期复习</span></div>
-                <span class="flow-arrow">→</span>
-                <div class="flow-step"><span class="flow-num">5</span><span>练习检验</span></div>
-              </div>
-              <div class="field-row field-row-end" style="margin-top:14px">
-                <button class="btn" data-action="go-insight">看学习看板</button>
-                <button class="btn" data-action="go-learn">去学习</button>
-              </div>
+              <div class="chapter-list" id="chapterList"></div>
             </div>
           </div>
-          <div class="col-side">
-            <div class="block">
-              <div class="block-head">
-                <h2>今天要做</h2>
+
+          <div class="block today-todo">
+            <div class="block-head">
+              <h2>今天要做</h2>
+              <span class="block-hint" id="dueHint"></span>
+            </div>
+            <div class="list list-compact todo-list" id="dueList"></div>
+          </div>
+
+          <div class="today-charts">
+            <div class="block chart-card">
+              <div class="block-head"><h2>未来 30 天到期</h2></div>
+              <div class="chart-canvas" id="dueChart"></div>
+            </div>
+            <div class="block chart-card">
+              <div class="block-head"><h2>记忆保持率</h2></div>
+              <div class="chart-canvas" id="retentionChart"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="today-actions">
+          <button class="btn btn-primary" data-action="go-learn">学习</button>
+          <button class="btn" data-action="go-review">复习</button>
+          <button class="btn" data-action="go-exam">考试</button>
+        </div>
+      </section>
                 <span class="block-hint" id="dueHint"></span>
               </div>
               <div class="list" id="dueList"></div>

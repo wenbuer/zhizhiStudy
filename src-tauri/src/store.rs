@@ -666,6 +666,25 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
+    /// 章节进度：按材料 + 章节统计已学 / 总数，给开始页右侧用。
+    pub fn chapter_progress(&self) -> Result<Vec<ChapterProgress>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT m.title AS material, c.section, COUNT(*) AS total, SUM(c.learned) AS learned
+             FROM cards c JOIN materials m ON m.id = c.material_id
+             GROUP BY c.material_id, c.section
+             ORDER BY c.material_id ASC, MIN(c.seq) ASC",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok(ChapterProgress {
+                material: r.get("material")?,
+                section: r.get("section")?,
+                total: r.get("total")?,
+                learned: r.get("learned")?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
     /// 错题：作答过但没拿满分的题（练习和测验都算），按出卷时间倒序。
     pub fn wrong_items(&self, limit: i64) -> Result<Vec<WrongItem>> {
         let sql = "SELECT i.*, e.title AS exam_title, e.kind AS exam_kind, e.created_at AS exam_created
@@ -812,6 +831,16 @@ pub struct Exam {
     pub kind: String,
     /// 已经出好的题数（stem 非空）
     pub made: i64,
+}
+
+/// 开始页右侧的章节进度。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChapterProgress {
+    pub material: String,
+    pub section: String,
+    pub total: i64,
+    pub learned: i64,
 }
 
 /// 错题列表里的一条：卷子信息 + 题目本身。
@@ -1011,6 +1040,29 @@ mod tests {
         let today = store.plan_today(plan).unwrap().unwrap();
         assert!(today.day_units.is_empty());
         assert_eq!(today.remaining_units, 0);
+    }
+
+    /// 章节进度按材料 + 章节分开统计，已学数与总数都对得上。
+    #[test]
+    fn chapter_progress_groups_by_material_and_section() {
+        let store = temp_store("chapter-progress");
+        let material = store
+            .insert_material("材料", "in.md", "md", 10, "正文", "2026-10-01")
+            .unwrap();
+        let mut a = unit("第一章-1");
+        a.section = "第一章".into();
+        let mut b = unit("第一章-2");
+        b.section = "第一章".into();
+        let mut c = unit("第二章-1");
+        c.section = "第二章".into();
+        store.insert_cards(material, &[a, b, c], "2026-10-01").unwrap();
+        let cards = store.list_cards(Some(material)).unwrap();
+        store.mark_learned(cards[0].id, true).unwrap();
+
+        let rows = store.chapter_progress().unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!((rows[0].section.as_str(), rows[0].total, rows[0].learned), ("第一章", 2, 1));
+        assert_eq!((rows[1].section.as_str(), rows[1].total, rows[1].learned), ("第二章", 1, 0));
     }
 
     /// 错题只收作答过、且没拿满分的题；跳过不答的不算。

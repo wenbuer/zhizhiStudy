@@ -47,6 +47,10 @@ const state = {
   practiceMode: 'random',
   /// 指定单元练习的左侧清单（已学单元），按需加载
   reviewCards: null,
+  /// 开始页一次取齐的数据：章节进度 + 两张图
+  overview: null,
+  /// 刚完成、还没播完粉碎动画的待办
+  todoDone: [],
 };
 
 const VIEW_TITLES = {
@@ -112,6 +116,7 @@ function switchView(name) {
   }
   if (name === 'import') renderMaterials();
   if (name === 'learn') renderLearn();
+  if (name === 'today') renderToday();
   if (name === 'settings') loadSettings().catch(() => {});
 }
 
@@ -119,18 +124,22 @@ function switchView(name) {
 
 async function refresh() {
   const learnedBefore = state.queue.stats ? state.queue.stats.learned : null;
+  const oldTodo = todoEntries();
   const results = await Promise.all([
     call('app_info'),
     call('today_queue'),
     call('list_materials'),
-    call('recent_reviews', { limit: 8 }),
     call('list_exams'),
+    call('start_overview').catch(() => null),
   ]);
   state.info = results[0];
   state.queue = results[1];
   state.materials = results[2];
-  state.recent = results[3];
-  state.exams = results[4];
+  state.exams = results[3];
+  state.overview = results[4];
+  const freshIds = new Set(todoEntries().map((entry) => entry.card.id));
+  const gone = oldTodo.filter((entry) => !freshIds.has(entry.card.id));
+  if (gone.length) state.todoDone = gone.slice(0, 3);
   state.cards = state.queue.fresh.concat(state.queue.due);
   // 学完 / 复习让「已学」数量变了，已学清单与指定单元练习的缓存一起作废
   if (learnedBefore !== state.queue.stats.learned) {
@@ -202,25 +211,6 @@ async function openLearnUnit(id) {
   renderLearn();
 }
 
-/* 今天计划的待学单元：点一下直接跳到学习页的那一节 */
-function todoRow(card) {
-  return '<div class="row" data-learn-id="' + card.id + '">' +
-    '<span class="dot dot-new"></span>' +
-    '<div class="row-main"><div class="row-title">' + escapeHtml(card.title) + '</div>' +
-    '<div class="row-sub">' + escapeHtml(card.section || card.materialTitle) + ' · 计划今天该学</div></div>' +
-    '<div class="row-side">待学</div></div>';
-}
-
-function cardRow(card) {
-  const dot = !card.learned ? 'dot-new'
-    : card.due <= today() ? 'dot-due'
-    : card.reps > 0 ? 'dot-review' : 'dot-fresh';
-  return '<div class="row" data-card="' + card.id + '" data-mode="exam">' +
-    '<span class="dot ' + dot + '"></span>' +
-    '<div class="row-main"><div class="row-title">' + escapeHtml(card.title) + '</div>' +
-    '<div class="row-sub">' + escapeHtml(card.materialTitle) + '</div></div>' +
-    '<div class="row-side">' + (card.learned ? '到期 ' + card.due : '未学') + '</div></div>';
-}
 
 function today() {
   const d = new Date();
@@ -229,18 +219,24 @@ function today() {
   return d.getFullYear() + '-' + m + '-' + day;
 }
 
+let todoDoneTimer = null;
+
+function todoEntries() {
+  return (state.queue.scheduled || []).map((card) => ({ card: card, kind: 'scheduled' }))
+    .concat((state.queue.due || []).map((card) => ({ card: card, kind: 'due' })));
+}
+
 function renderToday() {
   const s = state.queue.stats || {};
   const due = state.queue.due || [];
   const fresh = state.queue.fresh || [];
+  const scheduledNow = state.queue.scheduled || [];
   const pct = s.cards ? s.learned / s.cards : 0;
 
   let eyebrow = '进度';
   let title = '';
   let copy = '';
   let actions = '';
-
-  const scheduledNow = state.queue.scheduled || [];
 
   if (due.length > 0) {
     eyebrow = '记忆曲线提醒';
@@ -249,19 +245,19 @@ function renderToday() {
     actions = '<button class="btn btn-primary" data-action="review-due">开始复习</button>' +
       '<button class="btn" data-action="go-import">补新材料</button>';
   } else if (scheduledNow.length > 0) {
-    eyebrow = '今天的计划还没做完';
+    eyebrow = '记忆曲线提醒';
     title = '今天还有 ' + scheduledNow.length + ' 个单元要学';
     copy = '先按计划学完今天的量，学完当天就考一次，第一次答题决定后面几周的复习节奏。';
     actions = '<button class="btn btn-primary" data-action="learn-scheduled">学今天的单元</button>' +
       '<button class="btn" data-action="go-import">导入材料</button>';
   } else if (fresh.length > 0) {
-    eyebrow = '今天的量已经清完';
+    eyebrow = '记忆曲线提醒';
     title = '还可以推进 ' + fresh.length + ' 个新知识点';
     copy = '排一份学习计划，每天自动分好量；不排也可以想学多少学多少。';
     actions = '<button class="btn btn-primary" data-action="learn-first">继续学习</button>' +
       '<button class="btn" data-action="go-import">导入材料</button>';
   } else {
-    eyebrow = '还没有内容';
+    eyebrow = '记忆曲线提醒';
     title = '先给 致知 一份材料';
     copy = '网页链接、PDF、Word 或直接粘贴文本，模型会拆成知识点卡片与考题。';
     actions = '<button class="btn btn-primary" data-action="go-import">去导入</button>';
@@ -275,51 +271,92 @@ function renderToday() {
     '<div class="focus-actions">' + actions + '</div>' +
     '</div>' + ring(pct, (s.learned || 0) + '/' + (s.cards || 0), '已学知识点') + '</div>';
 
-  const scheduled = state.queue.scheduled || [];
-  el('dueHint').textContent = (due.length || scheduled.length)
-    ? (scheduled.length ? '该学 ' + scheduled.length : '') +
-      (scheduled.length && due.length ? ' · ' : '') +
+  el('dueHint').textContent = (due.length || scheduledNow.length)
+    ? (scheduledNow.length ? '该学 ' + scheduledNow.length : '') +
+      (scheduledNow.length && due.length ? ' · ' : '') +
       (due.length ? '到期复习 ' + due.length : '')
     : '今天没有安排';
-  const todo = scheduled.map(todoRow).concat(due.map(cardRow));
-  el('dueList').innerHTML = todo.length
-    ? todo.join('')
-    : '<div class="empty">今天该做的都做完了。想加量就去「学习」页推进新知识点。</div>';
-
-  renderRhythm();
-
-  const recent = state.recent || [];
-  el('recentList').innerHTML = recent.length
-    ? recent.map((r) => '<div class="row" data-card="' + r.cardId + '" data-mode="exam">' +
-        '<div class="row-main"><div class="row-title">' + escapeHtml(r.cardTitle) + '</div>' +
-        '<div class="row-sub">' + escapeHtml(r.ratedAt.slice(5, 16)) + '</div></div>' +
-        '<div class="row-side">' + (r.score == null ? ratingLabel(r.rating) : r.score + ' 分') + '</div></div>').join('')
-    : '<div class="empty">还没有练习记录。</div>';
+  renderTodoList();
+  renderChapters();
+  renderStartCharts();
 }
 
-/* 复习节奏：未来七天每天的到期量，柱子高低一眼看出哪天忙 */
-function renderRhythm() {
-  const rhythm = state.queue.rhythm || [];
-  const days = [];
-  for (let i = 0; i < 7; i += 1) {
-    const date = new Date();
-    date.setDate(date.getDate() + i);
-    const key = date.getFullYear() + '-' +
-      String(date.getMonth() + 1).padStart(2, '0') + '-' +
-      String(date.getDate()).padStart(2, '0');
-    const hit = rhythm.find((item) => item[0] === key);
-    days.push({ key: key, label: i === 0 ? '今天' : key.slice(5), count: hit ? hit[1] : 0 });
+/* 今天要做：固定高度滚动；刚完成的卡片第一次回开始页时碎掉再移除 */
+function todoRowHTML(entry, done) {
+  const card = entry.card;
+  const scheduled = entry.kind === 'scheduled';
+  const attrs = done
+    ? 'class="row todo-row is-done"'
+    : scheduled
+      ? 'class="row todo-row" data-learn-id="' + card.id + '"'
+      : 'class="row todo-row" data-card="' + card.id + '" data-mode="exam"';
+  return '<div ' + attrs + '>' +
+    '<span class="dot ' + (scheduled ? 'dot-new' : 'dot-due') + '"></span>' +
+    '<div class="row-main"><div class="row-title">' + escapeHtml(card.title) + '</div>' +
+    '<div class="row-sub">' + escapeHtml(card.materialTitle || '材料') + ' · ' +
+    escapeHtml(card.section || '未分类') + '</div></div>' +
+    '<div class="row-side">' + (done ? '已完成' : scheduled ? '计划今天学' : '到期复习') + '</div></div>';
+}
+
+function renderTodoList() {
+  const list = el('dueList');
+  const entries = todoEntries();
+  const animating = state.view === 'today' ? state.todoDone : [];
+  if (!entries.length && !animating.length) {
+    list.innerHTML = '<div class="empty">今天该做的都做完了。想加量就去「学习」页推进新知识点。</div>';
+    return;
   }
-  const peak = Math.max(1, ...days.map((day) => day.count));
-  const total = days.reduce((sum, day) => sum + day.count, 0);
-  el('rhythmHint').textContent = total ? '未来 7 天共 ' + total + ' 张' : '未来 7 天很空';
-  el('rhythmPanel').innerHTML = days.map((day) => {
-    const height = Math.round((day.count / peak) * 52);
-    return '<div class="rhythm-day' + (day.count ? '' : ' is-empty') + '">' +
-      '<div class="rhythm-bar" style="height:' + Math.max(day.count ? 4 : 2, height) + 'px"></div>' +
-      '<div class="rhythm-count">' + day.count + '</div>' +
-      '<div class="rhythm-label">' + day.label + '</div></div>';
+  list.innerHTML = animating.map((entry) => todoRowHTML(entry, true)).join('') +
+    entries.map((entry) => todoRowHTML(entry, false)).join('');
+  if (animating.length) playTodoDone(list);
+}
+
+function playTodoDone(list) {
+  list.querySelectorAll('.row.is-done').forEach((row) => {
+    for (let i = 0; i < 6; i += 1) {
+      const bit = document.createElement('span');
+      bit.className = 'todo-bit';
+      bit.style.setProperty('--dx', Math.round(Math.random() * 90 - 45) + 'px');
+      bit.style.setProperty('--dy', Math.round(-Math.random() * 26 - 4) + 'px');
+      bit.style.setProperty('--delay', Math.round(Math.random() * 90) + 'ms');
+      row.appendChild(bit);
+    }
+  });
+  clearTimeout(todoDoneTimer);
+  todoDoneTimer = setTimeout(() => {
+    state.todoDone = [];
+    renderTodoList();
+  }, 780);
+}
+
+/* 右侧章节进度：按材料 + 章节显示已学 / 总数 */
+function renderChapters() {
+  const chapters = (state.overview && state.overview.chapters) || [];
+  if (!chapters.length) {
+    el('chapterHint').textContent = '';
+    el('chapterList').innerHTML = '<div class="empty">导入材料后，这里按章节显示进度</div>';
+    return;
+  }
+  el('chapterHint').textContent = chapters.length + ' 章';
+  el('chapterList').innerHTML = chapters.map((chapter) => {
+    const pct = chapter.total ? Math.round((chapter.learned / chapter.total) * 100) : 0;
+    return '<div class="chapter-row">' +
+      '<div class="chapter-text"><span class="chapter-name">' + escapeHtml(chapter.section || '未分类') +
+      '</span><span class="chapter-sub">' + escapeHtml(chapter.material) + '</span></div>' +
+      '<span class="chapter-count">' + chapter.learned + '/' + chapter.total + '</span>' +
+      '<div class="bar"><span style="width:' + pct + '%"></span></div></div>';
   }).join('');
+}
+
+/* 两张图来自后端 start_overview：到期量与记忆保持率 */
+function renderStartCharts() {
+  const overview = state.overview;
+  el('dueChart').innerHTML = overview
+    ? overview.dueChart
+    : '<div class="empty">图表加载中…</div>';
+  el('retentionChart').innerHTML = overview
+    ? overview.retentionChart
+    : '<div class="empty">图表加载中…</div>';
 }
 
 function metric(value, label) {
@@ -2018,6 +2055,18 @@ function bind() {
         switchView('insight');
       } else if (name === 'go-learn') {
         switchView('learn');
+      } else if (name === 'go-review') {
+        const first = (state.queue.due || [])[0];
+        if (first) {
+          loadExamCard(first.id, 'exam');
+          return;
+        }
+        switchView('exam');
+        state.examTab = 'practice';
+        state.practiceMode = 'unit';
+        showExamTab('practice');
+      } else if (name === 'go-exam') {
+        switchView('quiz');
       } else if (name === 'learn-next') {
         // 「只看已学」就在已学清单里翻页，平时跳过折叠区的已学单元
         const list = state.learnList || [];

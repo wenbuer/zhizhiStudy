@@ -658,6 +658,29 @@ fn render_knowledge_map(state: State<'_, AppState>, material_id: Option<i64>) ->
     Ok(graph::knowledge_map(&title, &cards, &day))
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StartOverview {
+    chapters: Vec<store::ChapterProgress>,
+    due_chart: String,
+    retention_chart: String,
+}
+
+/// 开始页一次取齐：章节进度 + 两张小图。
+#[tauri::command]
+fn start_overview(state: State<'_, AppState>) -> Result<StartOverview, String> {
+    let store = state.store.lock().unwrap();
+    let day = today();
+    let chapters = store.chapter_progress().map_err(err_str)?;
+    let forecast = store.due_forecast(&day, 30).map_err(err_str)?;
+    let learned = store.learned_cards(-1).map_err(err_str)?;
+    Ok(StartOverview {
+        chapters,
+        due_chart: graph::due_chart(&forecast, &day),
+        retention_chart: graph::retention_chart(&learned, &day),
+    })
+}
+
 #[tauri::command]
 fn render_review_plan(state: State<'_, AppState>) -> Result<String, String> {
     let store = state.store.lock().unwrap();
@@ -1482,6 +1505,7 @@ pub fn run() {
             stats,
             recent_reviews,
             render_knowledge_map,
+            start_overview,
             render_review_plan,
             render_stage_guide,
             export_svg,
