@@ -260,16 +260,14 @@
 
       <!-- 测验 -->
       <section class="view" data-view="quiz">
-        <div class="grid-quiz">
-          <div class="col-main" id="quizMain"></div>
-          <div class="col-side" id="quizSide"></div>
-        </div>
-        <div class="block" id="quizHistory">
-          <div class="block-head">
-            <h2>考试记录</h2>
-            <span class="block-hint" id="quizHistoryHint"></span>
+        <div class="grid-shelf">
+          <div class="shelf-main">
+            <div class="col-main" id="quizMain"></div>
+            <div id="quizSide"></div>
           </div>
-          <div class="list list-compact" id="quizHistoryList"></div>
+          <aside class="shelf-col">
+            <div class="list" id="quizHistoryList"></div>
+          </aside>
         </div>
       </section>
 
@@ -414,7 +412,6 @@
           <div class="tabs" id="graphTabs">
             <button class="tab is-active" data-graph="stage">阶段指导</button>
             <button class="tab" data-graph="knowledge">知识地图</button>
-            <button class="tab" data-graph="plan">复习计划</button>
             <button class="btn btn-slim" id="exportBtn">导出 SVG</button>
           </div>
         </div>

@@ -919,8 +919,6 @@ body.is-reading .study-card > * {
 
 /* ── 测验 ─────────────────────────────────── */
 
-.grid-quiz { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 20px; align-items: start; }
-
 /* 出卷表单：题型步进器 */
 .kind-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 
@@ -978,8 +976,6 @@ body.is-reading .study-card > * {
 .quiz-nav button.is-current { background: var(--accent); border-color: var(--accent); color: #ffffff; }
 .quiz-nav button.is-right { border-color: var(--accent); background: #eaf7f1; color: #065f46; }
 .quiz-nav button.is-wrong { border-color: #e11d48; background: #fdf1f4; color: #9f1239; }
-.quiz-legend { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; font-size: 11.5px; color: var(--fg-dim); }
-
 /* 成绩与要点 */
 .score-big { display: flex; align-items: baseline; gap: 10px; }
 .score-big .num { font-size: 40px; font-weight: 700; letter-spacing: -0.02em; }
@@ -1466,6 +1462,8 @@ body.is-reading .study-card > * {
 }
 
 .shelf-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+
+.shelf-main { min-width: 0; display: flex; flex-direction: column; gap: 20px; }
 
 .shelf-col .row { flex-wrap: wrap; align-items: center; }
 .shelf-col .row-main { flex: 1 1 100%; }

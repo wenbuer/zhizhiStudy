@@ -1504,8 +1504,7 @@ function quizSetupHTML() {
   }).join('');
 
   return '<div class="block">' +
-    '<div class="block-head"><h2>出一份卷子</h2>' +
-    '<span class="block-hint">按知识点出题，客观题本地判分，简答与案例交模型按点给分</span></div>' +
+    '<div class="block-head"><h2>出一份卷子</h2></div>' +
     '<label class="field"><span class="field-label">素材库</span>' +
     '<select id="quizMaterial"><option value="">全部素材库</option>' + options + '</select></label>' +
     '<div class="field"><span class="field-label">抽题范围</span>' +
@@ -1514,7 +1513,7 @@ function quizSetupHTML() {
     '<div class="seg" id="quizTotal">' + [10, 20, 30, 50].map((n) =>
       '<button class="seg-item' + (quiz.total === n ? ' is-active' : '') + '" data-total="' + n + '">' + n + ' 题</button>').join('') +
     '</div></div>' +
-    '<div class="field"><span class="field-label">题型（每种题的分值固定：单选 2 / 判断 1 / 填空 2 / 多选 3 / 简答 5 / 案例 8）</span>' +
+    '<div class="field"><span class="field-label">题型</span>' +
     '<div class="kind-grid" id="quizKinds">' + kinds + '</div></div>' +
     '<div class="field-row field-row-end">' +
     '<span class="kbd-hint">当前 ' + quizTotal() + ' 题 · 满分 ' + quizFullScore() + ' 分</span>' +
@@ -1685,9 +1684,7 @@ function renderQuizSide() {
   const quiz = quizState();
   const side = el('quizSide');
   if (quiz.view === 'setup' || !quiz.items.length) {
-    side.innerHTML = '<div class="block"><div class="block-head"><h2>怎么用</h2></div>' +
-      '<div class="block-note">选好范围与题型后出卷：客观题（单选 / 多选 / 判断 / 填空）本地判分，' +
-      '简答和案例交模型按点给分。交卷后会生成复习要点，并把要点写回对应知识点。</div></div>';
+    side.innerHTML = '';
     return;
   }
   side.innerHTML = paperNavHTML(quiz);
@@ -1710,8 +1707,6 @@ function paperNavHTML(machine) {
   return '<div class="block">' +
     '<div class="block-head"><h2>题号</h2><span class="block-hint">已答 ' + answeredCount + '/' + machine.items.length + '</span></div>' +
     '<div class="quiz-nav">' + nav + '</div>' +
-    '<div class="quiz-legend"><span>· 实心 = 当前题</span><span>· 描边 = 已作答</span>' +
-    (machine.view === 'result' ? '<span>· 绿 = 答对，红 = 答错</span>' : '') + '</div>' +
     '</div>';
 }
 
@@ -1728,7 +1723,6 @@ function renderQuizHistory() {
   const list = el('quizHistoryList');
   if (!list) return;
   const exams = (state.exams || []).filter((exam) => exam.kind !== 'practice');
-  el('quizHistoryHint').textContent = exams.length ? exams.length + ' 次' : '';
   list.innerHTML = exams.length
     ? exams.map((exam) => '<div class="row" data-quiz-open="' + exam.id + '">' +
         '<div class="row-main"><div class="row-title">' + escapeHtml(exam.title) + '</div>' +
@@ -1789,9 +1783,8 @@ async function renderGraph() {
   try {
     const command = {
       knowledge: 'render_knowledge_map',
-      plan: 'render_review_plan',
       stage: 'render_stage_guide',
-    }[state.graph];
+    }[state.graph === 'plan' ? 'stage' : state.graph];
     const svg = await call(command, state.graph === 'knowledge' ? { materialId: null } : {});
     state.graphSvg = svg;
     canvas.innerHTML = svg;
