@@ -664,6 +664,7 @@ struct StartOverview {
     chapters: Vec<store::ChapterProgress>,
     due_chart: String,
     retention_chart: String,
+    retention_stats: graph::RetentionSummary,
 }
 
 /// 开始页一次取齐：章节进度 + 两张小图。
@@ -678,6 +679,7 @@ fn start_overview(state: State<'_, AppState>) -> Result<StartOverview, String> {
         chapters,
         due_chart: graph::due_chart(&forecast, &day),
         retention_chart: graph::retention_chart_at(&learned, &day, 1320.0),
+        retention_stats: graph::retention_summary(&learned, &day),
     })
 }
 

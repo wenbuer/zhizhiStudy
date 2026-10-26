@@ -1,5 +1,7 @@
 //! 程序化生成看板三张图：知识地图 / 复习计划 / 阶段指导（纯 SVG 字符串，无渲染依赖）。
 
+use serde::Serialize;
+
 use crate::store::{Card, Stats};
 
 const BG: &str = "#ffffff";
@@ -511,27 +513,17 @@ pub fn due_chart(forecast: &[(String, i64)], today: &str) -> String {
     s
 }
 
-/// 开始页用：未来 30 天平均记忆保持率，单独一张小图。
-pub fn retention_chart(learned: &[Card], today: &str) -> String {
-    retention_chart_at(learned, today, 640.0)
-}
-
-/// 同一条曲线，按指定宽度画：整行放时用宽图，并排时用窄图。
-pub fn retention_chart_at(learned: &[Card], today: &str, width: f64) -> String {
-    let height = 260.0f64;
-    let left = 52.0f64;
-    let right = width - 18.0;
-    let top = 42.0f64;
-    let bottom = height - 36.0;
-    let days = 30usize;
-    let slot = (right - left) / days as f64;
-
-    let histories: Vec<(f64, f64)> = learned
+/// 已学卡的记忆状态：稳定度 + 距上次复习天数。
+fn retention_histories(learned: &[Card], today: &str) -> Vec<(f64, f64)> {
+    learned
         .iter()
         .filter(|c| c.learned && c.stability > 0.0)
         .filter_map(|c| Some((c.stability, days_since(c.last_review.as_deref()?, today)?.max(0.0))))
-        .collect();
-    let curve: Vec<f64> = (0..days)
+        .collect()
+}
+
+fn average_curve(histories: &[(f64, f64)], days: usize) -> Vec<f64> {
+    (0..days)
         .map(|i| {
             if histories.is_empty() {
                 0.0
@@ -540,15 +532,67 @@ pub fn retention_chart_at(learned: &[Card], today: &str, width: f64) -> String {
                     / histories.len() as f64
             }
         })
-        .collect();
+        .collect()
+}
+
+/// 开始页指标条：今天平均、30 天后、参与卡数、低于 90% 的卡数。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RetentionSummary {
+    pub today: f64,
+    pub day30: f64,
+    pub cards: i64,
+    pub below90: i64,
+}
+
+pub fn retention_summary(learned: &[Card], today: &str) -> RetentionSummary {
+    let histories = retention_histories(learned, today);
+    let curve = average_curve(&histories, 30);
+    RetentionSummary {
+        today: curve.first().copied().unwrap_or(0.0) * 100.0,
+        day30: curve.last().copied().unwrap_or(0.0) * 100.0,
+        cards: histories.len() as i64,
+        below90: histories.iter().filter(|(s, e)| retention(*s, *e) < 0.9).count() as i64,
+    }
+}
+
+/// 开始页用：未来 30 天平均记忆保持率，单独一张小图。
+pub fn retention_chart(learned: &[Card], today: &str) -> String {
+    retention_chart_at(learned, today, 640.0)
+}
+
+/// 同一条曲线，按指定宽度画：整行放时用宽图，并排时用窄图。
+pub fn retention_chart_at(learned: &[Card], today: &str, width: f64) -> String {
+    let height = 250.0f64;
+    let left = 52.0f64;
+    let right = width - 18.0;
+    let top = 48.0f64;
+    let bottom = height - 30.0;
+    let days = 30usize;
+    let slot = (right - left) / days as f64;
+
+    let histories = retention_histories(learned, today);
+    let curve = average_curve(&histories, days);
+    let mut sorted = histories.clone();
+    sorted.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    let pick = |q: f64| -> Option<(f64, f64)> {
+        if sorted.is_empty() {
+            return None;
+        }
+        let idx = ((sorted.len() - 1) as f64 * q).round() as usize;
+        Some(sorted[idx.min(sorted.len() - 1)])
+    };
 
     let mut s = svg_open(width, height);
-    let note = if histories.is_empty() {
-        "还没有复习记录：学几张卡、复习一次就会长出曲线".to_string()
+    if histories.is_empty() {
+        s.push_str(&text(left, 18.0, 11.5, MUTED, "400", "start", "还没有复习记录：学几张卡、复习一次就会长出曲线"));
     } else {
-        format!("{} 张已学卡的平均保持率（之后不再复习）", histories.len())
-    };
-    s.push_str(&text(left, 18.0, 11.5, MUTED, "400", "start", &note));
+        s.push_str(&legend(left, 16.0, FG, "平均"));
+        s.push_str(&legend(left + 76.0, 16.0, BAD, "最弱"));
+        s.push_str(&legend(left + 156.0, 16.0, INFO, "中位"));
+        s.push_str(&legend(left + 236.0, 16.0, ACCENT, "最强"));
+    }
+
     for (val, label) in [(0.0, "0%"), (0.5, "50%"), (1.0, "100%")] {
         let gy = bottom - (bottom - top) * val;
         s.push_str(&format!(
@@ -561,32 +605,65 @@ pub fn retention_chart_at(learned: &[Card], today: &str, width: f64) -> String {
         "<line x1=\"{left}\" y1=\"{y90}\" x2=\"{right}\" y2=\"{y90}\" stroke=\"{WARN}\" stroke-dasharray=\"6 5\"/>"
     ));
     s.push_str(&text(right - 4.0, y90 - 5.0, 10.5, WARN, "400", "end", "90% 复习线"));
+
     if histories.is_empty() {
         s.push_str(&text(left + 12.0, (top + bottom) / 2.0, 12.5, MUTED, "400", "start", "暂无曲线"));
     } else {
-        let mut points = String::new();
-        for (i, keep) in curve.iter().enumerate() {
-            let x = left + i as f64 * slot + slot / 2.0;
-            let y = bottom - (bottom - top) * keep.clamp(0.0, 1.0);
-            points.push_str(&format!("{x:.1},{y:.1} "));
+        let point = |i: usize, keep: f64| -> (f64, f64) {
+            (
+                left + i as f64 * slot + slot / 2.0,
+                bottom - (bottom - top) * keep.clamp(0.0, 1.0),
+            )
+        };
+        let curve_points = |series: &[f64]| -> String {
+            series
+                .iter()
+                .enumerate()
+                .map(|(i, keep)| {
+                    let (x, y) = point(i, *keep);
+                    format!("{x:.1},{y:.1}")
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+
+        // 平均曲线下方铺一层淡色，避免只有一条线显得单薄
+        let area = curve_points(&curve);
+        let first_x = left + slot / 2.0;
+        let last_x = right - slot / 2.0;
+        s.push_str(&format!(
+            "<path d=\"M {first_x:.1},{bottom:.1} L {area_spaced} L {last_x:.1},{bottom:.1} Z\" fill=\"{ACCENT}\" opacity=\"0.08\"/>",
+            area_spaced = area.replace(' ', " L "),
+        ));
+
+        let series: [(&str, &str, Option<(f64, f64)>, f64); 3] = [
+            ("最弱", BAD, pick(0.0), 1.6),
+            ("中位", INFO, pick(0.5), 1.6),
+            ("最强", ACCENT, pick(1.0), 1.6),
+        ];
+        for (_, color, source, stroke) in series {
+            if let Some((stability, elapsed)) = source {
+                let line: Vec<f64> = (0..days)
+                    .map(|i| retention(stability, elapsed + i as f64))
+                    .collect();
+                s.push_str(&format!(
+                    "<polyline points=\"{}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"{stroke}\" stroke-opacity=\"0.75\" stroke-linejoin=\"round\" stroke-linecap=\"round\"/>",
+                    curve_points(&line)
+                ));
+            }
         }
         s.push_str(&format!(
-            "<polyline points=\"{}\" fill=\"none\" stroke=\"{ACCENT}\" stroke-width=\"2\" stroke-linejoin=\"round\" stroke-linecap=\"round\"/>",
-            points.trim_end()
+            "<polyline points=\"{}\" fill=\"none\" stroke=\"{FG}\" stroke-width=\"2.4\" stroke-linejoin=\"round\" stroke-linecap=\"round\"/>",
+            curve_points(&curve)
         ));
+
         let first = curve[0];
         let last = curve[days - 1];
-        let start_y = bottom - (bottom - top) * first;
-        let end_y = bottom - (bottom - top) * last;
-        s.push_str(&format!(
-            "<circle cx=\"{x:.1}\" cy=\"{start_y:.1}\" r=\"3.5\" fill=\"{ACCENT}\"/>",
-            x = left + slot / 2.0
-        ));
-        s.push_str(&text(left + slot / 2.0 + 8.0, start_y + 16.0, 11.0, MUTED, "400", "start", &format!("今天 {:.0}%", first * 100.0)));
-        s.push_str(&format!(
-            "<circle cx=\"{x:.1}\" cy=\"{end_y:.1}\" r=\"3.5\" fill=\"{ACCENT}\"/>",
-            x = right - slot / 2.0
-        ));
+        let (start_x, start_y) = point(0, first);
+        let (end_x, end_y) = point(days - 1, last);
+        s.push_str(&format!("<circle cx=\"{start_x:.1}\" cy=\"{start_y:.1}\" r=\"3.5\" fill=\"{FG}\"/>"));
+        s.push_str(&text(start_x + 8.0, start_y + 16.0, 11.0, MUTED, "400", "start", &format!("今天 {:.0}%", first * 100.0)));
+        s.push_str(&format!("<circle cx=\"{end_x:.1}\" cy=\"{end_y:.1}\" r=\"3.5\" fill=\"{FG}\"/>"));
         s.push_str(&text(right - 2.0, end_y + 18.0, 11.0, MUTED, "400", "end", &format!("30 天后 {:.0}%", last * 100.0)));
     }
     s.push_str("</svg>");
@@ -800,7 +877,13 @@ mod tests {
         let curve = retention_chart(&[c.clone()], "2026-10-10");
         assert!(curve.contains("90% 复习线"));
         assert!(curve.contains("<polyline"));
-        let wide = retention_chart_at(&[c], "2026-10-10", 1320.0);
+        let mut weak = card(2, 2, true, "2026-10-10", 2);
+        weak.last_review = Some("2026-10-09T09:00:00".into());
+        weak.stability = 2.0;
+        let mut strong = card(3, 3, true, "2026-10-10", 2);
+        strong.last_review = Some("2026-09-20T09:00:00".into());
+        strong.stability = 40.0;
+        let wide = retention_chart_at(&[weak, c.clone(), strong], "2026-10-10", 1320.0);
         assert!(wide.contains("<polyline"));
         // 想让开始页预览用真图：设 ZHIZHI_CHART_DIR 指向一个目录再跑这条测试
         if let Some(dir) = std::env::var_os("ZHIZHI_CHART_DIR") {

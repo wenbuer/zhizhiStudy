@@ -186,6 +186,10 @@ body {
 .chapter-count { font-size: 11.5px; color: var(--fg-muted); font-family: var(--font-mono); }
 .chapter-row .bar { grid-column: 1 / -1; height: 5px; }
 .today-retention { margin-top: 18px; }
+.retention-stats { display: flex; flex-wrap: wrap; gap: 18px; margin-bottom: 8px; }
+.retention-stat { display: inline-flex; align-items: baseline; gap: 6px; font-size: 11.5px; color: var(--fg-dim); }
+.retention-stat b { font-size: 15px; font-weight: 600; color: var(--fg); font-family: var(--font-mono); }
+.retention-stat.is-warn b { color: var(--bad); }
 .todo-list { max-height: 196px; overflow-y: auto; padding-right: 4px; }
 .todo-row { position: relative; overflow: visible; }
 .todo-row.is-done { animation: todo-crumble 700ms ease forwards; pointer-events: none; }

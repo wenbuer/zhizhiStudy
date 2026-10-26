@@ -351,6 +351,26 @@ function renderStartCharts() {
   el('retentionChart').innerHTML = overview
     ? overview.retentionChart
     : '<div class="empty">图表加载中…</div>';
+  renderRetentionStats();
+}
+
+/* 记忆保持率卡片顶部的四个指标：今天 / 30 天后 / 低于 90% / 参与卡片 */
+function renderRetentionStats() {
+  const box = el('retentionStats');
+  const stats = state.overview && state.overview.retentionStats;
+  if (!stats || !stats.cards) {
+    box.innerHTML = '<span class="retention-stat">还没有可计算的复习记录</span>';
+    return;
+  }
+  const items = [
+    ['今天平均', Math.round(stats.today) + '%', ''],
+    ['30 天后', Math.round(stats.day30) + '%', ''],
+    ['低于 90%', stats.below90 + ' 张', 'is-warn'],
+    ['参与卡片', stats.cards + ' 张', ''],
+  ];
+  box.innerHTML = items.map(([label, value, cls]) =>
+    '<span class="retention-stat' + (cls ? ' ' + cls : '') + '">' + label +
+    '<b>' + value + '</b></span>').join('');
 }
 
 function metric(value, label) {
