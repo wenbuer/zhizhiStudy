@@ -110,7 +110,15 @@
       </section>
 
       <section class="view" data-view="shelf">
-        <div class="grid-book">
+        <div class="grid-shelf">
+          <aside class="shelf-col">
+            <div class="list" id="shelfList"></div>
+            <div id="tocHead" hidden>
+              <div class="block-head"><h2>目录</h2></div>
+            </div>
+            <div class="book-toc" id="bookToc"></div>
+          </aside>
+
           <div class="block book-main">
             <div class="shelf-head">
               <div class="tabs" id="shelfTabs">
@@ -153,12 +161,6 @@
             </div>
           </div>
 
-          <div class="block book-side" id="bookSide">
-            <div class="block-head"><h2>书架</h2></div>
-            <div class="list" id="shelfList"></div>
-            <div class="block-head" id="tocHead" hidden><h2>目录</h2></div>
-            <div class="book-toc" id="bookToc"></div>
-          </div>
         </div>
       </section>
 

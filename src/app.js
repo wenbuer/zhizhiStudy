@@ -1932,10 +1932,6 @@ function bookMainHTML() {
 
 function bookFormHTML() {
   const form = state.book.form;
-  const picked = (state.materials || []).filter((item) => form.materialIds.includes(item.id));
-  const scope = picked.length
-    ? '已选 ' + picked.length + ' 份：' + picked.map((item) => item.title).join('、')
-    : '全部材料' + (state.materials && state.materials.length ? '（' + state.materials.length + ' 份）' : '');
   return `
     <div class="book-form">
       <label class="field">
@@ -1946,10 +1942,6 @@ function bookFormHTML() {
         <span class="field-label">学习目标（可不填）</span>
         <input id="bookGoal" type="text" placeholder="例如：三个月内能自己搭一套检索问答" value="${escapeHtml(form.goal)}" />
       </label>
-      <div class="field">
-        <span class="field-label">素材</span>
-        <p class="book-scope">${escapeHtml(scope)}</p>
-      </div>
       <div class="field-row field-row-end">
         <button class="btn btn-primary" data-book="outline">生成目录</button>
       </div>

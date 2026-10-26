@@ -1451,12 +1451,20 @@ body.is-reading .study-card > * {
   * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
 }
 
-.grid-book {
+.grid-shelf {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 254px;
+  grid-template-columns: 320px minmax(0, 1fr);
   gap: 20px;
   align-items: start;
 }
+
+.shelf-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+
+.shelf-col .row { flex-wrap: wrap; }
+.shelf-col .row-main { flex: 1 1 100%; }
+.shelf-col .row .btn { margin-top: 2px; }
+
+
 
 .shelf-head {
   display: flex;
@@ -1468,12 +1476,6 @@ body.is-reading .study-card > * {
 .book-main { min-width: 0; }
 
 .book-form .field + .field { margin-top: 14px; }
-
-.book-scope {
-  margin: 0 0 6px;
-  font-size: 12.5px;
-  color: var(--fg);
-}
 
 .row.is-picked { box-shadow: inset 2px 0 0 var(--accent); }
 
@@ -1570,6 +1572,6 @@ body.is-reading .study-card > * {
 .book-toc-row:hover { background: var(--panel-2); color: var(--fg); }
 .book-toc-no { font-family: var(--font-mono); font-size: 11px; color: var(--fg-dim); min-width: 14px; }
 
-@media (max-width: 1080px) {
-  .grid-book { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 1040px) {
+  .grid-shelf { grid-template-columns: minmax(0, 1fr); }
 }
