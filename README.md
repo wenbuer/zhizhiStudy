@@ -20,8 +20,16 @@
 
 <table>
   <tr>
-    <td width="50%"><img src="shots/shelf.png" alt="书架" /><br /><sub>书架：导入的材料、在线生成的书都在一处</sub></td>
-    <td width="50%"><img src="shots/learn.png" alt="学习" /><br /><sub>学习：按书切换，逐单元读讲解，读完自测</sub></td>
+    <td width="50%"><img src="shots/start.png" alt="开始" /><br /><sub>开始：今天该复习哪几张、待办清单、记忆保持率与未来 30 天到期量</sub></td>
+    <td width="50%"><img src="shots/shelf.png" alt="书架" /><br /><sub>书架：在线生成一本书，或本地导入材料，一行就是一份可学的内容</sub></td>
+  </tr>
+  <tr>
+    <td><img src="shots/learn.png" alt="学习" /><br /><sub>学习：顶部按书切换，逐单元读讲解，划词翻译与提问</sub></td>
+    <td><img src="shots/practice.png" alt="练习" /><br /><sub>练习：随机出题或指定单元作答，判分后自动排复习；错题可展开</sub></td>
+  </tr>
+  <tr>
+    <td><img src="shots/exam.png" alt="考试" /><br /><sub>考试：六种题型自动组卷，左边作答、右边考试记录</sub></td>
+    <td><img src="shots/insight.png" alt="看板" /><br /><sub>看板：阶段指导与知识地图，可导出 SVG</sub></td>
   </tr>
 </table>
 
