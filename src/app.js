@@ -58,6 +58,9 @@ const state = {
     form: { title: '', goal: '', materialIds: [] },
   },
   learnBook: null,
+  learnPendingId: null,
+  wrongItems: [],
+  wrongOpen: null,
 };
 
 const VIEW_TITLES = {
@@ -210,8 +213,10 @@ async function openLearnUnit(id) {
     fresh = state.queue.fresh;
     index = fresh.length - 1;
   }
+  const target = fresh[index];
   state.learnIndex = index;
-  state.learnMaterial = null;
+  state.learnMaterial = target ? target.materialId : null;
+  state.learnPendingId = target ? target.id : null;
   state.learnQuery = '';
   state.learnedOnly = false;
   switchView('learn');
@@ -742,10 +747,15 @@ function learnedFoldHtml(learned, activeId) {
     '<span>' + total + '</span></div>' + body + '</div>';
 }
 
+function currentMaterialId() {
+  const first = (state.materials || [])[0];
+  return first ? first.id : null;
+}
+
 function renderShelfSelect(current) {
   const select = el('learnShelf');
   if (!select) return;
-  const html = ['<option value="">书架</option>']
+  const html = ['<option value="">全部</option>']
     .concat((state.materials || []).map((m) =>
       '<option value="' + m.id + '">' + escapeHtml(m.title) + '</option>'))
     .join('');
@@ -763,7 +773,9 @@ function renderLearn() {
   if (state.learnBook) { renderLearnBook(); return; }
 
   // 素材库切换器
-  renderShelfSelect(state.learnMaterial);
+  const showing = (state.queue.fresh || []).concat(state.learned || [])
+    .find((card) => card.id === state.learnCurrentId);
+  renderShelfSelect(state.learnMaterial || (showing ? showing.materialId : null) || currentMaterialId());
 
   const filter = el('learnFilter');
   if (filter) {
@@ -778,6 +790,10 @@ function renderLearn() {
       (card.title || '').toLowerCase().includes(query) ||
       (card.section || '').toLowerCase().includes(query));
 
+  if (!state.learnMaterial && state.materials && state.materials.length) {
+    state.learnMaterial = state.materials[0].id;
+  }
+
   const fresh = (state.queue.fresh || []).filter(matches);
   const learned = state.learned ? state.learned.filter(matches) : null;
 
@@ -786,6 +802,11 @@ function renderLearn() {
 
   const list = state.learnedOnly ? (learned || []) : fresh.concat(learned || []);
   state.learnList = list;
+  if (state.learnPendingId) {
+    const at = list.findIndex((card) => card.id === state.learnPendingId);
+    if (at >= 0) state.learnIndex = at;
+    state.learnPendingId = null;
+  }
   const current = list[state.learnIndex] || list[0];
   const activeId = current ? current.id : null;
   state.learnCurrentId = activeId;
@@ -1218,27 +1239,34 @@ function selectReviewCard(id) {
 }
 
 function renderWrongPane() {
-  const list = el('wrongList');
-  list.innerHTML = '<div class="empty">正在读取错题…</div>';
+  el('wrongList').innerHTML = '<div class="empty">正在读取错题…</div>';
   call('list_wrong_items', { limit: 50 })
     .then((items) => {
-      if (!items.length) {
-        el('wrongHint').textContent = '';
-        list.innerHTML = '<div class="empty">还没有错题。练习或考试里没拿满分的题会收在这里。</div>';
-        return;
-      }
-      el('wrongHint').textContent = items.length + ' 道';
-      list.innerHTML = items.map(wrongItemHTML).join('');
+      state.wrongItems = items;
+      drawWrongPane();
     })
     .catch(() => {
-      list.innerHTML = '<div class="empty">读取错题失败，稍后再试</div>';
+      el('wrongList').innerHTML = '<div class="empty">读取错题失败，稍后再试</div>';
     });
+}
+
+function drawWrongPane() {
+  const items = state.wrongItems || [];
+  const list = el('wrongList');
+  if (!items.length) {
+    el('wrongHint').textContent = '';
+    list.innerHTML = '<div class="empty">还没有错题。练习或考试里没拿满分的题会收在这里。</div>';
+    return;
+  }
+  el('wrongHint').textContent = items.length + ' 道';
+  list.innerHTML = items.map(wrongItemHTML).join('');
 }
 
 function wrongItemHTML(entry) {
   const item = entry.item;
   const score = item.score == null ? 0 : item.score;
-  return '<div class="wrong-item">' +
+  const open = state.wrongOpen === item.id;
+  return '<div class="wrong-item' + (open ? ' is-open' : '') + '" data-wrong="' + item.id + '">' +
     '<div class="wrong-head">' +
     '<span class="quiz-kind">' + escapeHtml(kindLabel(item.kind)) + '</span>' +
     '<span class="wrong-title">' + escapeHtml(item.stem || '（题干缺失）') + '</span>' +
@@ -1247,6 +1275,19 @@ function wrongItemHTML(entry) {
       .filter((part) => part && String(part).trim())
       .map((part) => escapeHtml(String(part)))
       .join(' · ') + '</div>' +
+    wrongDetailHTML(entry, open) +
+    '</div>';
+}
+
+function wrongDetailHTML(entry, open) {
+  if (!open) return '';
+  const item = entry.item;
+  const missed = (item.missed || []).map((m) => '<li>' + escapeHtml(m) + '</li>').join('');
+  return '<div class="wrong-detail">' +
+    (item.userAnswer ? '<div class="wrong-line"><b>你的答案</b>' + escapeHtml(item.userAnswer) + '</div>' : '') +
+    '<div class="wrong-line"><b>参考答案</b>' + escapeHtml(item.answer || '（暂无）') + '</div>' +
+    (item.explain ? '<div class="wrong-line"><b>解析</b>' + escapeHtml(item.explain) + '</div>' : '') +
+    (missed ? '<div class="wrong-line"><b>遗漏</b><ul class="grade-list">' + missed + '</ul></div>' : '') +
     '</div>';
 }
 
@@ -2284,13 +2325,9 @@ function bind() {
         const planId = Number(action.dataset.id);
         const current = await call('plan_today', { planId: planId });
         const first = current && current.dayUnits.find((card) => !card.learned);
+        if (first) { await openLearnUnit(first.id); return; }
         state.learnedOnly = false;
         switchView('learn');
-        if (first) {
-          const at = (state.queue.fresh || []).findIndex((card) => card.id === first.id);
-          if (at >= 0) state.learnIndex = at;
-          renderLearn();
-        }
       } else if (name === 'plan-delete') {
         await call('delete_plan', { planId: Number(action.dataset.id) });
         toast('计划已删除', 'ok');
@@ -2371,6 +2408,14 @@ function bind() {
     const at = state.collapsed.indexOf(name);
     if (at >= 0) state.collapsed.splice(at, 1); else state.collapsed.push(name);
     renderLearn();
+  });
+
+  el('wrongList').addEventListener('click', (event) => {
+    const card = event.target.closest('[data-wrong]');
+    if (!card) return;
+    const id = Number(card.dataset.wrong);
+    state.wrongOpen = state.wrongOpen === id ? null : id;
+    drawWrongPane();
   });
 
   el('learnFilter').addEventListener('click', () => {
