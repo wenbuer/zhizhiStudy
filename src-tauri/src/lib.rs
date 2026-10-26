@@ -506,9 +506,6 @@ fn learned_cards(state: State<'_, AppState>, limit: Option<i64>) -> Result<Vec<C
     state.store.lock().unwrap().learned_cards(limit.unwrap_or(-1)).map_err(err_str)
 }
 
-// ── 成书 ─────────────────────────────────────────────────
-
-/// 第一步：排目录。不选材料时按书名/目标上网取料，取到的内容会落成一份材料。
 #[tauri::command]
 async fn book_outline(
     state: State<'_, AppState>,
@@ -573,7 +570,6 @@ fn book_create(
         .map_err(err_str)
 }
 
-/// 第二步：写正文。每次调用写 limit 章，前端循环到 done。
 #[tauri::command]
 async fn book_generate_step(
     state: State<'_, AppState>,
@@ -661,7 +657,6 @@ fn book_delete(state: State<'_, AppState>, book_id: i64) -> Result<(), String> {
     state.store.lock().unwrap().delete_book(book_id).map_err(err_str)
 }
 
-/// 导出一整本 Markdown 到数据目录的 exports 下，返回文件路径。
 #[tauri::command]
 fn book_export(state: State<'_, AppState>, book_id: i64) -> Result<String, String> {
     let (book, chapters) = {

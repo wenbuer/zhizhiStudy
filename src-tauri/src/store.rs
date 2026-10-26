@@ -216,7 +216,6 @@ pub struct Stats {
     pub next_stage: String,
 }
 
-/// 一本书：目录已定、正文可能还在分批生成。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Book {
@@ -239,7 +238,6 @@ pub struct BookChapter {
     pub title: String,
     pub intro: String,
     pub body: String,
-    /// 本章引用的素材卡 id，回看时能跳到出处
     pub keys: Vec<String>,
 }
 
@@ -812,8 +810,6 @@ impl Store {
         Ok(())
     }
 
-    // ── 成书 ─────────────────────────────────────────────
-
     const BOOK_SELECT: &'static str =
         "SELECT b.id, b.title, b.goal, b.origin, b.status, b.created_at,
                 (SELECT COUNT(*) FROM book_chapters c WHERE c.book_id = b.id) AS chapters,
@@ -833,7 +829,6 @@ impl Store {
         })
     }
 
-    /// 落一本书：目录先定下来，正文留给 book_generate_step 分批补。
     pub fn insert_book(
         &self,
         title: &str,
@@ -887,7 +882,6 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
-    /// 还没写正文的章节，按顺序取前 N 章（每次调用写一批，进度可见、失败可续）。
     pub fn pending_chapters(&self, book_id: i64, limit: i64) -> Result<Vec<BookChapter>> {
         Ok(self
             .book_chapters(book_id)?
@@ -1253,7 +1247,6 @@ mod tests {
         assert_eq!(titles(&store.learned_cards(-1).unwrap()), ["章节1-1"]);
     }
 
-    /// 成书：目录先落库，正文按章补齐；写完的章不再回到待写队列。
     #[test]
     fn book_outline_then_fill_chapters() {
         let store = temp_store("book-chapters");

@@ -158,7 +158,7 @@ async function refresh() {
   }
   renderChrome();
   renderToday();
-  renderMaterials();
+  renderShelf();
   renderPlans();
   renderLearn();
   if (state.view === 'quiz') renderQuiz().catch(() => {});
@@ -398,10 +398,10 @@ function ratingLabel(rating) {
 /* 内容到手之后：切分单元 → 补考点，全过程进度都写在材料库那一行上。 */
 async function importItem(item) {
   state.importing = { label: '正在切分学习单元…', source: item.title };
-  renderMaterials();
+  renderShelf();
   const out = await call('create_material', { item: item });
   state.importing = { label: '已切分 ' + out.units + ' 个单元 · 正在补考点…', source: item.title };
-  renderMaterials();
+  renderShelf();
   const result = await polishUnits(out.materialId);
   state.importing = null;
   if (result.error) {
@@ -423,7 +423,7 @@ async function polishUnits(materialId) {
     if (step.error && !error) error = step.error;
     if (state.importing) {
       state.importing.label = '正在补考点 ' + polished + '/' + (polished + step.remaining) + '…';
-      renderMaterials();
+      renderShelf();
     }
     if (step.done || step.polished === 0) break;
   }
@@ -431,59 +431,12 @@ async function polishUnits(materialId) {
 }
 
 
-function renderMaterials() {
-  const list = state.materials || [];
-  el('materialHint').textContent = list.length ? list.length + ' 份材料' : '还没有材料';
-
-  const busy = state.importing
-    ? '<div class="row is-busy"><span class="spinner"></span>' +
-      '<div class="row-main"><div class="row-title">' + escapeHtml(state.importing.label) + '</div>' +
-      '<div class="row-sub">' + escapeHtml(state.importing.source) + '</div></div></div>'
-    : '';
-
-  const rows = list.map((m) => {
-    const renaming = state.renaming === m.id;
-    return '<div class="row" data-material="' + m.id + '">' +
-      '<div class="row-main">' +
-      (renaming
-        ? '<input class="inline-input" data-rename="' + m.id + '" value="' + escapeHtml(m.title) + '" />'
-        : '<div class="row-title">' + escapeHtml(m.title) + '</div>') +
-      '<div class="row-sub">' + m.sourceKind +
-      (m.pendingCount ? ' · 待补考点 ' + m.pendingCount : '') +
-      ' · ' + m.chars + ' 字 · ' + m.cardCount + ' 个单元 · ' +
-      escapeHtml(m.createdAt.slice(0, 10)) + '</div></div>' +
-      (m.pendingCount
-        ? '<button class="btn btn-slim" data-act="polish" data-id="' + m.id + '">补考点</button>'
-        : '') +
-      '<button class="btn btn-slim" data-act="rename" data-id="' + m.id + '">重命名</button>' +
-      '<button class="btn btn-slim" data-act="export" data-id="' + m.id + '">导出</button>' +
-      '<button class="btn btn-slim" data-act="del" data-id="' + m.id + '">删除</button></div>';
-  }).join('');
-
-  el('materialList').innerHTML = busy + (list.length
-    ? rows
-    : (state.importing ? '' : '<div class="empty">还没有材料。左边导入第一份吧。</div>'));
-
-  if (state.renaming) {
-    const input = document.querySelector('[data-rename]');
-    if (input) {
-      input.focus();
-      input.select();
-      input.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter') commitRename(input);
-        if (event.key === 'Escape') { state.renaming = null; renderMaterials(); }
-      });
-      input.addEventListener('blur', () => commitRename(input));
-    }
-  }
-}
-
 async function commitRename(input) {
   const id = Number(input.dataset.rename);
   const title = input.value.trim();
   if (state.renaming === null) return;
   state.renaming = null;
-  if (!title) { renderMaterials(); return; }
+  if (!title) { renderShelf(); return; }
   input.disabled = true;
   await call('rename_material', { materialId: id, title: title });
   toast('已重命名', 'ok');
@@ -1951,14 +1904,11 @@ async function detectProxy() {
   }
 }
 
-/* ── 成书 ─────────────────────────────────── */
-
-/* 书架页一次取齐：书 + 材料，两边标签共用这一份数据 */
 async function loadShelf() {
   const [materials, books] = await Promise.all([call('list_materials'), call('book_list')]);
   state.materials = materials;
   state.book.list = books;
-  renderMaterials();
+  renderShelf();
   paintBook();
 }
 
@@ -1967,24 +1917,23 @@ function showShelfTab(name) {
   document.querySelectorAll('[data-shelf-tab]').forEach((node) => {
     node.classList.toggle('is-active', node.dataset.shelfTab === name);
   });
-  const bookMode = name === 'book';
-  el('bookPane').hidden = !bookMode;
-  el('importPane').hidden = bookMode;
-  el('bookHead').hidden = !bookMode;
-  el('bookHint').hidden = !bookMode;
-  if (!bookMode) renderMaterials();
+  const searching = name === 'search';
+  el('bookPane').hidden = !searching;
+  el('importPane').hidden = searching;
+  el('bookHead').hidden = !searching;
+  el('bookHint').hidden = !searching;
+  renderShelf();
 }
 
 function paintBook() {
   const detail = state.book.detail;
-  el('bookHead').textContent = detail ? detail.book.title : '成书';
+  el('bookHead').textContent = detail ? detail.book.title : '在线搜索';
   el('bookHint').textContent = state.book.generating
-    ? '正在逐章写正文，可以先去别的页'
+    ? '正在逐章写正文'
     : detail
-      ? detail.book.origin || '逐章正文'
-      : '选材料或直接给主题，排成目录、逐章写正文';
+      ? detail.book.origin || ''
+      : '给个书名或主题，上网找资料并排成书';
   el('bookPane').innerHTML = bookMainHTML();
-  paintShelf();
 }
 
 function bookMainHTML() {
@@ -1995,16 +1944,14 @@ function bookMainHTML() {
 
 function bookFormHTML() {
   const form = state.book.form;
-  const rows = (state.materials || []).map((item) => `
-    <label class="book-mat">
-      <input type="checkbox" data-book-material="${item.id}" ${form.materialIds.includes(item.id) ? 'checked' : ''} />
-      <span class="book-mat-name">${escapeHtml(item.title)}</span>
-      <span class="book-mat-count">${item.cardCount} 个知识点</span>
-    </label>`).join('');
+  const picked = (state.materials || []).filter((item) => form.materialIds.includes(item.id));
+  const scope = picked.length
+    ? '已选 ' + picked.length + ' 份：' + picked.map((item) => item.title).join('、')
+    : '全部材料' + (state.materials && state.materials.length ? '（' + state.materials.length + ' 份）' : '');
   return `
     <div class="book-form">
       <label class="field">
-        <span class="field-label">书名</span>
+        <span class="field-label">书名或主题</span>
         <input id="bookTitle" type="text" placeholder="例如：RAG 从入门到落地" value="${escapeHtml(form.title)}" />
       </label>
       <label class="field">
@@ -2012,9 +1959,9 @@ function bookFormHTML() {
         <input id="bookGoal" type="text" placeholder="例如：三个月内能自己搭一套检索问答" value="${escapeHtml(form.goal)}" />
       </label>
       <div class="field">
-        <span class="field-label">用哪些材料的知识点</span>
-        <div class="book-mats">${rows || '<p class="empty">还没有材料。不勾也行：填个书名，会按主题上网找资料。</p>'}</div>
-        <span class="field-hint">一条都不勾就按书名上网取料；取回的内容会存成一份材料，之后还能接着学。</span>
+        <span class="field-label">素材</span>
+        <p class="book-scope">${escapeHtml(scope)}</p>
+        <span class="field-hint">在右侧书架里点材料行可以挑素材；一份都不挑就按书名上网取料。</span>
       </div>
       <div class="field-row field-row-end">
         <button class="btn btn-primary" data-book="outline">生成目录</button>
@@ -2080,18 +2027,63 @@ function bookReaderHTML() {
   return head + chapters;
 }
 
-/* 右侧书架：上面是书，下面是材料；读书时再多一段目录 */
-function paintShelf() {
+function renderShelf() {
   const books = state.book.list || [];
+  const materials = state.materials || [];
   const detail = state.book.detail;
-  el('shelfCount').textContent = books.length ? books.length + ' 本书' : '还没有书';
-  el('bookShelf').innerHTML = books.length
-    ? books.map((book) => `
-      <button class="book-shelf-row${detail && detail.book.id === book.id ? ' is-active' : ''}" data-book="open" data-id="${book.id}">
-        <span class="book-shelf-title">${escapeHtml(book.title)}</span>
-        <span class="book-shelf-sub">${book.chapters} 章 · 已写 ${book.written}</span>
-      </button>`).join('')
-    : '<p class="empty">还没有书。左边填个书名就能生成第一本。</p>';
+  const picking = state.shelfTab === 'search' && !detail;
+  el('shelfCount').textContent = books.length || materials.length
+    ? books.length + ' 本书 · ' + materials.length + ' 份材料'
+    : '还是空的';
+
+  const busy = state.importing
+    ? '<div class="row is-busy"><span class="spinner"></span>' +
+      '<div class="row-main"><div class="row-title">' + escapeHtml(state.importing.label) + '</div>' +
+      '<div class="row-sub">' + escapeHtml(state.importing.source) + '</div></div></div>'
+    : '';
+
+  const bookRows = books.map((book) => `
+    <div class="row${detail && detail.book.id === book.id ? ' is-picked' : ''}" data-open-book="${book.id}">
+      <div class="row-main">
+        <div class="row-title">${escapeHtml(book.title)}</div>
+        <div class="row-sub">书 · ${book.chapters} 章 · 已写 ${book.written}</div>
+      </div>
+      <button class="btn btn-slim" data-book="export" data-id="${book.id}">导出</button>
+      <button class="btn btn-slim" data-book="del" data-id="${book.id}">删除</button>
+    </div>`).join('');
+
+  const matRows = materials.map((m) => {
+    const picked = state.book.form.materialIds.includes(m.id);
+    return `<div class="row${picked ? ' is-picked' : ''}" data-material="${m.id}"${picking ? ` data-scope="${m.id}"` : ''}>
+      <div class="row-main">
+        ${state.renaming === m.id
+          ? `<input class="inline-input" data-rename="${m.id}" value="${escapeHtml(m.title)}" />`
+          : `<div class="row-title">${escapeHtml(m.title)}</div>`}
+        <div class="row-sub">材料 · ${m.sourceKind}${m.pendingCount ? ' · 待补考点 ' + m.pendingCount : ''} · ${m.chars} 字 · ${m.cardCount} 个单元 · ${escapeHtml(m.createdAt.slice(0, 10))}</div>
+      </div>
+      ${m.pendingCount ? `<button class="btn btn-slim" data-act="polish" data-id="${m.id}">补考点</button>` : ''}
+      <button class="btn btn-slim" data-act="rename" data-id="${m.id}">重命名</button>
+      <button class="btn btn-slim" data-act="export" data-id="${m.id}">导出</button>
+      <button class="btn btn-slim" data-act="del" data-id="${m.id}">删除</button>
+    </div>`;
+  }).join('');
+
+  el('shelfList').innerHTML = busy + bookRows + matRows +
+    (books.length || materials.length ? '' : '<div class="empty">书架还是空的：切到「本地导入」加材料，或在上边填个书名上网搜。</div>');
+
+  if (state.renaming) {
+    const input = document.querySelector('[data-rename]');
+    if (input) {
+      input.focus();
+      input.select();
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') commitRename(input);
+        if (event.key === 'Escape') { state.renaming = null; renderShelf(); }
+      });
+      input.addEventListener('blur', () => commitRename(input));
+    }
+  }
+
   el('tocHead').hidden = !detail;
   el('bookToc').innerHTML = detail
     ? detail.chapters.map((chapter) => `
@@ -2139,6 +2131,7 @@ async function openBook(bookId) {
   state.book.detail = await call('book_get', { bookId });
   state.book.outline = null;
   paintBook();
+  renderShelf();
 }
 
 async function exportBook(bookId) {
@@ -2155,7 +2148,6 @@ async function deleteBook(bookId) {
   toast('已删除', 'ok');
 }
 
-/* 逐章写正文：后端每次写 limit 章，这里循环到写完；一章都没成功就停下，别连打接口 */
 async function runGenerate(bookId) {
   state.book.generating = { written: 0, remaining: null, error: '' };
   paintBook();
@@ -2196,15 +2188,21 @@ function bind() {
     if (event.target.id === 'bookTitle') state.book.form.title = event.target.value;
     if (event.target.id === 'bookGoal') state.book.form.goal = event.target.value;
   });
-  bookView.addEventListener('change', (event) => {
-    const box = event.target.closest('[data-book-material]');
-    if (!box) return;
-    const id = Number(box.dataset.bookMaterial);
-    const kept = state.book.form.materialIds.filter((item) => item !== id);
-    if (box.checked) kept.push(id);
-    state.book.form.materialIds = kept;
-  });
   bookView.addEventListener('click', (event) => {
+    const rowBook = event.target.closest('[data-open-book]');
+    if (rowBook) { openBook(Number(rowBook.dataset.openBook)).catch(() => {}); return; }
+
+    const scopeRow = event.target.closest('[data-scope]');
+    if (scopeRow && !event.target.closest('[data-act]') && !event.target.closest('input')) {
+      const id = Number(scopeRow.dataset.scope);
+      const kept = state.book.form.materialIds.filter((item) => item !== id);
+      if (!state.book.form.materialIds.includes(id)) kept.push(id);
+      state.book.form.materialIds = kept;
+      renderShelf();
+      paintBook();
+      return;
+    }
+
     const trigger = event.target.closest('[data-book]');
     if (!trigger) return;
     const action = trigger.dataset.book;
@@ -2217,9 +2215,9 @@ function bind() {
       state.book.outline = null;
       state.book.form = { title: '', goal: '', materialIds: [] };
       paintBook();
-    } else if (action === 'open') openBook(id).catch(() => {});
-    else if (action === 'export') exportBook(id).catch(() => {});
-    else if (action === 'delete') deleteBook(id).catch(() => {});
+      renderShelf();
+    } else if (action === 'export') exportBook(id).catch(() => {});
+    else if (action === 'del') deleteBook(id).catch(() => {});
     else if (action === 'continue') runGenerate(id).catch(() => {});
     else if (action === 'jump') {
       const node = el('bookCh' + trigger.dataset.seq);
@@ -2308,10 +2306,10 @@ function bind() {
         await refresh();
       } else if (act === 'rename') {
         state.renaming = id;
-        renderMaterials();
+        renderShelf();
       } else if (act === 'polish') {
         state.importing = { label: '正在补考点…', source: '单元已切分，只差考点' };
-        renderMaterials();
+        renderShelf();
         const result = await polishUnits(id);
         state.importing = null;
         toast(result.error
@@ -2399,14 +2397,14 @@ function bind() {
       label: query.startsWith('http') ? '正在抓取网页…' : '正在搜索资料…',
       source: query,
     };
-    renderMaterials();
+    renderShelf();
     try {
       const item = await call('ingest_query', { text: query });
       el('urlInput').value = '';
       await importItem(item);
     } catch (error) {
       state.importing = null;
-      renderMaterials();
+      renderShelf();
       toast('导入失败。如果这个站点需要代理，去「设置」页配置代理后重试。', 'bad');
     }
   });
@@ -2420,14 +2418,14 @@ function bind() {
     const body = el('textInput').value;
     const title = el('textTitle').value.trim() || '粘贴文本 ' + today();
     state.importing = { label: '正在切分学习单元…', source: title };
-    renderMaterials();
+    renderShelf();
     try {
       const item = await call('ingest_text', { title: title, text: body });
       el('textInput').value = '';
       await importItem(item);
     } catch (error) {
       state.importing = null;
-      renderMaterials();
+      renderShelf();
       toast('导入失败：' + String(error), 'bad');
     }
   }));
@@ -2665,7 +2663,7 @@ async function handleFiles(files) {
   const file = files[0];
   if (!file) return;
   state.importing = { label: '正在解析文件…', source: file.name };
-  renderMaterials();
+  renderShelf();
   try {
     const buffer = new Uint8Array(await file.arrayBuffer());
     const item = await call('ingest_bytes', {
@@ -2674,7 +2672,7 @@ async function handleFiles(files) {
     await importItem(item);
   } catch (error) {
     state.importing = null;
-    renderMaterials();
+    renderShelf();
     toast('导入失败：' + String(error), 'bad');
   }
 }

@@ -315,7 +315,6 @@ impl LlmClient {
         Ok(digest)
     }
 
-    /// 成书第一步：从素材清单里排出目录（章 + 每章引用的素材 key）。
     pub async fn book_outline(
         &self,
         title: &str,
@@ -345,7 +344,6 @@ impl LlmClient {
         let items: Vec<OutlineChapter> = serde_json::from_str(&json_text)
             .map_err(|e| anyhow!("目录 JSON 解析失败：{e}"))?;
 
-        // 模型偶尔会漏 key 或把同一条素材塞进两章：这里按素材清单收一遍。
         let valid: std::collections::HashSet<&str> =
             catalog.iter().map(|item| item.key.as_str()).collect();
         let mut used: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -368,7 +366,6 @@ impl LlmClient {
         Ok(chapters)
     }
 
-    /// 成书第二步：写一章正文。素材只放本章引用的那几条，避免一次性塞爆上下文。
     pub async fn write_chapter(
         &self,
         book_title: &str,
@@ -506,7 +503,6 @@ pub fn kind_label(kind: &str) -> &'static str {
     }
 }
 
-/// 成书目录里的章：标题、导语、引用的素材 key。
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OutlineChapter {

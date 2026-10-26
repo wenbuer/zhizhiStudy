@@ -1,5 +1,3 @@
-//! 成书：把材料（或现搜的网络资料）编排成一本有目录、有正文的书。
-
 use anyhow::Result;
 use serde::Serialize;
 
@@ -7,7 +5,6 @@ use crate::ingest::{self, Ingested};
 use crate::llm::OutlineChapter;
 use crate::store::{Book, BookChapter, Card, NewCard, Store};
 
-/// 待编排的一条素材。key 固定写成 `c:<cards.id>`，回到卡片就能取全文。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Candidate {
@@ -20,9 +17,7 @@ pub struct Candidate {
 #[serde(rename_all = "camelCase")]
 pub struct Outline {
     pub chapters: Vec<OutlineChapter>,
-    /// 素材来源说明，直接显示给用户
     pub origin: String,
-    /// 网络取料时新建的材料 id：界面据此说明「已存为材料」
     pub material_id: Option<i64>,
 }
 
@@ -42,8 +37,6 @@ pub struct Detail {
     pub chapters: Vec<BookChapter>,
 }
 
-/// 候选素材。material_ids 为空表示全部材料。
-/// 正文太短的卡片排不出章节，先挡掉。
 pub fn candidates(store: &Store, material_ids: &[i64]) -> Result<Vec<Candidate>> {
     Ok(store
         .list_cards(None)?
@@ -58,7 +51,6 @@ pub fn candidates(store: &Store, material_ids: &[i64]) -> Result<Vec<Candidate>>
         .collect())
 }
 
-/// 网络取到的内容落库：顺手变成一份材料，成完书还能在「材料」页继续学。
 pub fn save_topic(store: &Store, item: &Ingested, now: &str, today: &str) -> Result<i64> {
     let id = store.insert_material(&item.title, &item.source, &item.kind, item.chars, &item.text, now)?;
     let units = ingest::split_units(&item.text, &item.kind);
@@ -75,7 +67,6 @@ pub fn save_topic(store: &Store, item: &Ingested, now: &str, today: &str) -> Res
     Ok(id)
 }
 
-/// 把本章引用的 key 换成（标题, 正文）。
 pub fn sources(cards: &[Card], keys: &[String]) -> Vec<(String, String)> {
     keys.iter()
         .filter_map(|key| {
@@ -88,7 +79,6 @@ pub fn sources(cards: &[Card], keys: &[String]) -> Vec<(String, String)> {
         .collect()
 }
 
-/// 上一章结尾：下一章写的时候用来衔接语气。
 pub fn tail(text: &str) -> String {
     let count = text.chars().count();
     if count <= 500 {

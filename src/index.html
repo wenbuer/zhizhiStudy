@@ -109,16 +109,15 @@
         </div>
       </section>
 
-      <!-- 书架：左边导入材料 / 成书，右边一个书架（书 + 材料） -->
       <section class="view" data-view="shelf">
         <div class="grid-book">
           <div class="block book-main">
             <div class="shelf-head">
               <div class="tabs" id="shelfTabs">
-                <button class="tab is-active" data-shelf-tab="book">成书</button>
-                <button class="tab" data-shelf-tab="import">导入材料</button>
+                <button class="tab is-active" data-shelf-tab="search">在线搜索</button>
+                <button class="tab" data-shelf-tab="local">本地导入</button>
               </div>
-              <h2 class="shelf-title" id="bookHead">成书</h2>
+              <h2 class="shelf-title" id="bookHead">在线搜索</h2>
               <span class="block-hint" id="bookHint"></span>
             </div>
 
@@ -164,9 +163,7 @@
 
           <div class="block book-side" id="bookSide">
             <div class="block-head"><h2>书架</h2><span class="block-hint" id="shelfCount"></span></div>
-            <div class="book-shelf" id="bookShelf"></div>
-            <div class="block-head"><h2>材料</h2><span class="block-hint" id="materialHint"></span></div>
-            <div class="list list-compact" id="materialList"></div>
+            <div class="list" id="shelfList"></div>
             <div class="block-head" id="tocHead" hidden><h2>目录</h2></div>
             <div class="book-toc" id="bookToc"></div>
           </div>
