@@ -51,6 +51,8 @@ const state = {
   overview: null,
   /// 刚完成、还没播完粉碎动画的待办
   todoDone: [],
+  /// 书架页：成书 / 导入材料 两个标签
+  shelfTab: 'book',
   /// 成书：书架 / 当前这本 / 待确认的目录 / 生成中的进度
   book: {
     list: [],
@@ -62,7 +64,7 @@ const state = {
 };
 
 const VIEW_TITLES = {
-  today: '开始', import: '材料', book: '成书', learn: '学习', exam: '练习', quiz: '考试', insight: '看板', settings: '设置',
+  today: '开始', shelf: '书架', learn: '学习', exam: '练习', quiz: '考试', insight: '看板', settings: '设置',
 };
 
 const el = (id) => document.getElementById(id);
@@ -122,8 +124,7 @@ function switchView(name) {
     showExamTab('practice');
     renderExam().catch((error) => toast('练习页加载失败：' + String(error), 'bad'));
   }
-  if (name === 'import') renderMaterials();
-  if (name === 'book') loadBook().catch((error) => toast('成书页加载失败：' + String(error), 'bad'));
+  if (name === 'shelf') loadShelf().catch((error) => toast('书架加载失败：' + String(error), 'bad'));
   if (name === 'learn') renderLearn();
   if (name === 'today') renderToday();
   if (name === 'settings') loadSettings().catch(() => {});
@@ -1952,9 +1953,26 @@ async function detectProxy() {
 
 /* ── 成书 ─────────────────────────────────── */
 
-async function loadBook() {
-  state.book.list = await call('book_list');
+/* 书架页一次取齐：书 + 材料，两边标签共用这一份数据 */
+async function loadShelf() {
+  const [materials, books] = await Promise.all([call('list_materials'), call('book_list')]);
+  state.materials = materials;
+  state.book.list = books;
+  renderMaterials();
   paintBook();
+}
+
+function showShelfTab(name) {
+  state.shelfTab = name;
+  document.querySelectorAll('[data-shelf-tab]').forEach((node) => {
+    node.classList.toggle('is-active', node.dataset.shelfTab === name);
+  });
+  const bookMode = name === 'book';
+  el('bookPane').hidden = !bookMode;
+  el('importPane').hidden = bookMode;
+  el('bookHead').hidden = !bookMode;
+  el('bookHint').hidden = !bookMode;
+  if (!bookMode) renderMaterials();
 }
 
 function paintBook() {
@@ -1966,7 +1984,7 @@ function paintBook() {
       ? detail.book.origin || '逐章正文'
       : '选材料或直接给主题，排成目录、逐章写正文';
   el('bookPane').innerHTML = bookMainHTML();
-  el('bookSide').innerHTML = bookSideHTML();
+  paintShelf();
 }
 
 function bookMainHTML() {
@@ -2062,24 +2080,25 @@ function bookReaderHTML() {
   return head + chapters;
 }
 
-function bookSideHTML() {
+/* 右侧书架：上面是书，下面是材料；读书时再多一段目录 */
+function paintShelf() {
   const books = state.book.list || [];
   const detail = state.book.detail;
-  const rows = books.map((book) => `
-    <button class="book-shelf-row${detail && detail.book.id === book.id ? ' is-active' : ''}" data-book="open" data-id="${book.id}">
-      <span class="book-shelf-title">${escapeHtml(book.title)}</span>
-      <span class="book-shelf-sub">${book.chapters} 章 · 已写 ${book.written}</span>
-    </button>`).join('');
-  const toc = detail
-    ? `<div class="book-toc">${detail.chapters.map((chapter) => `
-        <button class="book-toc-row" data-book="jump" data-seq="${chapter.seq}">
-          <span class="book-toc-no">${chapter.seq}</span>${escapeHtml(chapter.title)}
-        </button>`).join('')}</div>`
+  el('shelfCount').textContent = books.length ? books.length + ' 本书' : '还没有书';
+  el('bookShelf').innerHTML = books.length
+    ? books.map((book) => `
+      <button class="book-shelf-row${detail && detail.book.id === book.id ? ' is-active' : ''}" data-book="open" data-id="${book.id}">
+        <span class="book-shelf-title">${escapeHtml(book.title)}</span>
+        <span class="book-shelf-sub">${book.chapters} 章 · 已写 ${book.written}</span>
+      </button>`).join('')
+    : '<p class="empty">还没有书。左边填个书名就能生成第一本。</p>';
+  el('tocHead').hidden = !detail;
+  el('bookToc').innerHTML = detail
+    ? detail.chapters.map((chapter) => `
+      <button class="book-toc-row" data-book="jump" data-seq="${chapter.seq}">
+        <span class="book-toc-no">${chapter.seq}</span>${escapeHtml(chapter.title)}
+      </button>`).join('')
     : '';
-  return `
-    <div class="block-head"><h2>书架</h2><span class="block-hint">${books.length} 本</span></div>
-    <div class="book-shelf">${rows || '<p class="empty">还没有书。左边填个书名就能生成第一本。</p>'}</div>
-    ${toc ? `<div class="block-head"><h2>目录</h2></div>${toc}` : ''}`;
 }
 
 async function runOutline(button) {
@@ -2113,7 +2132,7 @@ async function createAndWrite(button) {
   state.book.outline = null;
   await openBook(bookId);
   await runGenerate(bookId).catch(() => {});
-  await loadBook().catch(() => {});
+  await loadShelf().catch(() => {});
 }
 
 async function openBook(bookId) {
@@ -2132,7 +2151,7 @@ async function deleteBook(bookId) {
   if (!confirm('删除这本书？已写的正文会一起删掉，材料不受影响。')) return;
   await call('book_delete', { bookId });
   state.book.detail = null;
-  await loadBook();
+  await loadShelf();
   toast('已删除', 'ok');
 }
 
@@ -2167,7 +2186,12 @@ function bind() {
     if (button) switchView(button.dataset.view);
   });
 
-  const bookView = document.querySelector('.view[data-view="book"]');
+  el('shelfTabs').addEventListener('click', (event) => {
+    const tab = event.target.closest('[data-shelf-tab]');
+    if (tab) showShelfTab(tab.dataset.shelfTab);
+  });
+
+  const bookView = document.querySelector('.view[data-view="shelf"]');
   bookView.addEventListener('input', (event) => {
     if (event.target.id === 'bookTitle') state.book.form.title = event.target.value;
     if (event.target.id === 'bookGoal') state.book.form.goal = event.target.value;
@@ -2318,7 +2342,8 @@ function bind() {
         const first = (state.queue.scheduled || [])[0];
         if (first) await openLearnUnit(first.id);
       } else if (name === 'go-import') {
-        switchView('import');
+        switchView('shelf');
+        showShelfTab('import');
       } else if (name === 'go-insight') {
         switchView('insight');
       } else if (name === 'go-learn') {

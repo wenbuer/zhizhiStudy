@@ -233,7 +233,6 @@ body {
   background: #fdfdfe;
 }
 .today-actions .btn { flex: 1; text-align: center; }
-.grid-import { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 20px; }
 .grid-study { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 20px; align-items: start; }
 .grid-exam { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr); gap: 20px; align-items: start; }
 
@@ -1460,6 +1459,16 @@ body.is-reading .study-card > * {
   gap: 20px;
   align-items: start;
 }
+
+.shelf-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.shelf-title { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.shelf-head .block-hint { margin-left: auto; }
 
 .book-main { min-width: 0; }
 
