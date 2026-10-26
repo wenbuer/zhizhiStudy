@@ -81,22 +81,22 @@
             </div>
           </div>
 
-          <div class="block today-todo">
-            <div class="block-head">
-              <h2>今天要做</h2>
-              <span class="block-hint" id="dueHint"></span>
-            </div>
-            <div class="list list-compact todo-list" id="dueList"></div>
+          <div class="block chart-card today-retention">
+            <div class="block-head"><h2>记忆保持率</h2></div>
+            <div class="chart-canvas" id="retentionChart"></div>
           </div>
 
-          <div class="today-charts">
+          <div class="today-bottom">
+            <div class="block today-todo">
+              <div class="block-head">
+                <h2>今天要做</h2>
+                <span class="block-hint" id="dueHint"></span>
+              </div>
+              <div class="list list-compact todo-list" id="dueList"></div>
+            </div>
             <div class="block chart-card">
               <div class="block-head"><h2>未来 30 天到期</h2></div>
               <div class="chart-canvas" id="dueChart"></div>
-            </div>
-            <div class="block chart-card">
-              <div class="block-head"><h2>记忆保持率</h2></div>
-              <div class="chart-canvas" id="retentionChart"></div>
             </div>
           </div>
         </div>
@@ -105,24 +105,6 @@
           <button class="btn btn-primary" data-action="go-learn">学习</button>
           <button class="btn" data-action="go-review">复习</button>
           <button class="btn" data-action="go-exam">考试</button>
-        </div>
-      </section>
-                <span class="block-hint" id="dueHint"></span>
-              </div>
-              <div class="list" id="dueList"></div>
-            </div>
-            <div class="block">
-              <div class="block-head">
-                <h2>复习节奏</h2>
-                <span class="block-hint" id="rhythmHint"></span>
-              </div>
-              <div class="rhythm" id="rhythmPanel"></div>
-            </div>
-            <div class="block">
-              <div class="block-head"><h2>最近练习</h2></div>
-              <div class="list list-compact" id="recentList"></div>
-            </div>
-          </div>
         </div>
       </section>
 

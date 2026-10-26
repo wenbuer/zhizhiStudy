@@ -677,7 +677,7 @@ fn start_overview(state: State<'_, AppState>) -> Result<StartOverview, String> {
     Ok(StartOverview {
         chapters,
         due_chart: graph::due_chart(&forecast, &day),
-        retention_chart: graph::retention_chart(&learned, &day),
+        retention_chart: graph::retention_chart_at(&learned, &day, 1320.0),
     })
 }
 

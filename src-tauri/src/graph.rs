@@ -513,7 +513,11 @@ pub fn due_chart(forecast: &[(String, i64)], today: &str) -> String {
 
 /// 开始页用：未来 30 天平均记忆保持率，单独一张小图。
 pub fn retention_chart(learned: &[Card], today: &str) -> String {
-    let width = 640.0f64;
+    retention_chart_at(learned, today, 640.0)
+}
+
+/// 同一条曲线，按指定宽度画：整行放时用宽图，并排时用窄图。
+pub fn retention_chart_at(learned: &[Card], today: &str, width: f64) -> String {
     let height = 260.0f64;
     let left = 52.0f64;
     let right = width - 18.0;
@@ -793,15 +797,18 @@ mod tests {
         let bars = due_chart(&forecast, "2026-10-10");
         assert!(bars.starts_with("<svg"));
         assert!(bars.contains("每天到期张数"));
-        let curve = retention_chart(&[c], "2026-10-10");
+        let curve = retention_chart(&[c.clone()], "2026-10-10");
         assert!(curve.contains("90% 复习线"));
         assert!(curve.contains("<polyline"));
+        let wide = retention_chart_at(&[c], "2026-10-10", 1320.0);
+        assert!(wide.contains("<polyline"));
         // 想让开始页预览用真图：设 ZHIZHI_CHART_DIR 指向一个目录再跑这条测试
         if let Some(dir) = std::env::var_os("ZHIZHI_CHART_DIR") {
             let dir = std::path::PathBuf::from(dir);
             let _ = std::fs::create_dir_all(&dir);
             let _ = std::fs::write(dir.join("due.svg"), &bars);
             let _ = std::fs::write(dir.join("retention.svg"), &curve);
+            let _ = std::fs::write(dir.join("retention-wide.svg"), &wide);
         }
     }
 

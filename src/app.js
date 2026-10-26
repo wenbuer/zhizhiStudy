@@ -233,31 +233,26 @@ function renderToday() {
   const scheduledNow = state.queue.scheduled || [];
   const pct = s.cards ? s.learned / s.cards : 0;
 
-  let eyebrow = '进度';
   let title = '';
   let copy = '';
   let actions = '';
 
   if (due.length > 0) {
-    eyebrow = '记忆曲线提醒';
     title = '有 ' + due.length + ' 张卡该复习了';
     copy = '它们刚好落在记忆快要衰减的位置，先清掉这几张，再去学新内容。';
     actions = '<button class="btn btn-primary" data-action="review-due">开始复习</button>' +
       '<button class="btn" data-action="go-import">补新材料</button>';
   } else if (scheduledNow.length > 0) {
-    eyebrow = '记忆曲线提醒';
     title = '今天还有 ' + scheduledNow.length + ' 个单元要学';
     copy = '先按计划学完今天的量，学完当天就考一次，第一次答题决定后面几周的复习节奏。';
     actions = '<button class="btn btn-primary" data-action="learn-scheduled">学今天的单元</button>' +
       '<button class="btn" data-action="go-import">导入材料</button>';
   } else if (fresh.length > 0) {
-    eyebrow = '记忆曲线提醒';
     title = '还可以推进 ' + fresh.length + ' 个新知识点';
     copy = '排一份学习计划，每天自动分好量；不排也可以想学多少学多少。';
     actions = '<button class="btn btn-primary" data-action="learn-first">继续学习</button>' +
       '<button class="btn" data-action="go-import">导入材料</button>';
   } else {
-    eyebrow = '记忆曲线提醒';
     title = '先给 致知 一份材料';
     copy = '网页链接、PDF、Word 或直接粘贴文本，模型会拆成知识点卡片与考题。';
     actions = '<button class="btn btn-primary" data-action="go-import">去导入</button>';
@@ -265,7 +260,6 @@ function renderToday() {
 
   el('todayFocus').innerHTML =
     '<div class="focus"><div>' +
-    '<div class="focus-eyebrow">' + eyebrow + '</div>' +
     '<h3 class="focus-title">' + title + '</h3>' +
     '<p class="focus-copy">' + copy + '</p>' +
     '<div class="focus-actions">' + actions + '</div>' +

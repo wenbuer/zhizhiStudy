@@ -167,7 +167,10 @@ body {
   gap: 18px;
   align-items: stretch;
 }
-.today-top .block { margin: 0; }
+.today-top .block { display: flex; flex-direction: column; margin: 0; height: 100%; }
+.today-top .block + .block,
+.today-bottom .block + .block { margin-top: 0; }
+.today-top .focus { flex: 1; align-items: center; }
 .chapter-list {
   display: flex;
   flex-direction: column;
@@ -182,7 +185,7 @@ body {
 .chapter-sub { font-size: 11px; color: var(--fg-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chapter-count { font-size: 11.5px; color: var(--fg-muted); font-family: var(--font-mono); }
 .chapter-row .bar { grid-column: 1 / -1; height: 5px; }
-.today-todo { margin-top: 18px; }
+.today-retention { margin-top: 18px; }
 .todo-list { max-height: 196px; overflow-y: auto; padding-right: 4px; }
 .todo-row { position: relative; overflow: visible; }
 .todo-row.is-done { animation: todo-crumble 700ms ease forwards; pointer-events: none; }
@@ -205,7 +208,16 @@ body {
 @keyframes bit-fly {
   to { transform: translate(var(--dx, 20px), var(--dy, -20px)) rotate(140deg); opacity: 0; }
 }
-.today-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 18px; }
+.today-bottom {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 18px;
+  align-items: stretch;
+}
+.today-bottom .block { display: flex; flex-direction: column; margin: 0; height: 100%; }
+.today-bottom .todo-list { flex: 1; min-height: 0; }
+.today-bottom .chart-canvas { flex: 1; display: flex; align-items: center; }
 .chart-card .block-head { margin-bottom: 8px; }
 .chart-canvas svg { display: block; width: 100%; height: auto; }
 .today-actions {
