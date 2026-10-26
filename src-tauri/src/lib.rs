@@ -1386,6 +1386,11 @@ fn list_wrong_items(
 }
 
 #[tauri::command]
+fn dismiss_wrong_item(state: State<'_, AppState>, item_id: i64) -> Result<(), String> {
+    state.store.lock().unwrap().dismiss_wrong_item(item_id).map_err(err_str)
+}
+
+#[tauri::command]
 fn save_exam_answer(state: State<'_, AppState>, item_id: i64, answer: String) -> Result<(), String> {
     state.store.lock().unwrap().save_exam_answer(item_id, &answer).map_err(err_str)
 }
@@ -1666,6 +1671,7 @@ pub fn run() {
             get_exam,
             list_exams,
             list_wrong_items,
+            dismiss_wrong_item,
             save_exam_answer,
             submit_exam,
             delete_exam,

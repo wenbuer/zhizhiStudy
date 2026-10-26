@@ -268,6 +268,7 @@ impl Store {
         let _ = conn.execute("ALTER TABLE cards ADD COLUMN exam_notes TEXT NOT NULL DEFAULT '[]'", []);
         let _ = conn.execute("ALTER TABLE exams ADD COLUMN kind TEXT NOT NULL DEFAULT 'quiz'", []);
         let _ = conn.execute("ALTER TABLE books ADD COLUMN material_id INTEGER", []);
+        let _ = conn.execute("ALTER TABLE exam_items ADD COLUMN dismissed INTEGER NOT NULL DEFAULT 0", []);
         Ok(Self { conn })
     }
 
@@ -762,6 +763,7 @@ impl Store {
                    LEFT JOIN cards c ON c.id = i.card_id
                    LEFT JOIN materials m ON m.id = c.material_id
                    WHERE TRIM(i.user_answer) <> '' AND i.score IS NOT NULL AND i.score < i.points - 0.001
+                     AND i.dismissed = 0
                    ORDER BY e.id DESC, i.seq ASC LIMIT ?1";
         let mut stmt = self.conn.prepare(sql)?;
         let rows = stmt.query_map(params![limit], |r| {
@@ -775,6 +777,14 @@ impl Store {
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn dismiss_wrong_item(&self, item_id: i64) -> Result<()> {
+        self.conn.execute(
+            "UPDATE exam_items SET dismissed = 1 WHERE id = ?1",
+            params![item_id],
+        )?;
+        Ok(())
     }
 
     pub fn save_exam_answer(&self, item_id: i64, answer: &str) -> Result<()> {

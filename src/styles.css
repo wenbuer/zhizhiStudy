@@ -538,8 +538,10 @@ input::placeholder, textarea::placeholder { color: var(--fg-dim); }
   padding-right: 6px;
 }
 
-.shelf-switch { width: 100%; }
+.shelf-switch { flex: 1 1 auto; min-width: 0; }
 .shelf-switch > select { width: 100%; }
+.shelf-label { flex: none; font-size: 12.5px; color: var(--fg-dim); }
+.wrong-del { flex: none; padding: 2px 8px; font-size: 11.5px; }
 
 .study-card {
   min-height: 0;

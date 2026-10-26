@@ -1270,7 +1270,8 @@ function wrongItemHTML(entry) {
     '<div class="wrong-head">' +
     '<span class="quiz-kind">' + escapeHtml(kindLabel(item.kind)) + '</span>' +
     '<span class="wrong-title">' + escapeHtml(item.stem || '（题干缺失）') + '</span>' +
-    '<span class="wrong-score">' + score + ' / ' + item.points + '</span></div>' +
+    '<span class="wrong-score">' + score + ' / ' + item.points + '</span>' +
+    '<button class="btn btn-slim wrong-del" data-dismiss="' + item.id + '">删除</button></div>' +
     '<div class="wrong-meta">' + [entry.materialTitle, item.cardTitle, (entry.createdAt || '').slice(0, 10)]
       .filter((part) => part && String(part).trim())
       .map((part) => escapeHtml(String(part)))
@@ -2410,7 +2411,19 @@ function bind() {
     renderLearn();
   });
 
-  el('wrongList').addEventListener('click', (event) => {
+  el('wrongList').addEventListener('click', async (event) => {
+    const del = event.target.closest('[data-dismiss]');
+    if (del) {
+      event.preventDefault();
+      const id = Number(del.dataset.dismiss);
+      if (!confirm('从错题里删掉这道题？卷子本身不受影响。')) return;
+      await call('dismiss_wrong_item', { itemId: id });
+      state.wrongItems = (state.wrongItems || []).filter((entry) => entry.item.id !== id);
+      if (state.wrongOpen === id) state.wrongOpen = null;
+      drawWrongPane();
+      toast('已从错题删除', 'ok');
+      return;
+    }
     const card = event.target.closest('[data-wrong]');
     if (!card) return;
     const id = Number(card.dataset.wrong);
