@@ -202,9 +202,9 @@
           </div>
         </div>
 
-        <div class="grid-exam" id="practiceWrap">
-          <div class="col-main" id="practiceMain"></div>
-          <div class="col-side" id="practiceSide"></div>
+        <div class="col-main" id="practiceWrap">
+          <div id="practiceMain"></div>
+          <div id="practiceNav"></div>
         </div>
 
         <div class="grid-review" id="unitWrap" hidden>
@@ -213,7 +213,7 @@
             <div class="list list-compact" id="unitList"></div>
           </aside>
 
-          <div class="grid-exam review-main">
+          <div class="col-main review-main">
             <div class="block">
               <div class="block-head">
                 <h2 id="examHeading">题目</h2>
@@ -230,21 +230,9 @@
                 <button class="btn btn-primary" id="gradeBtn">提交并评判</button>
               </div>
             </div>
-            <div class="col-side">
-              <div class="block">
-                <div class="block-head"><h2>自评复习</h2></div>
-                <p class="block-note" id="selfNote">答完题由模型评分并自动排期；也可直接自评四档。</p>
-                <div class="rate-grid" id="rateGrid">
-                  <button class="btn btn-rate" data-rating="1">忘记</button>
-                  <button class="btn btn-rate" data-rating="2">有点难</button>
-                  <button class="btn btn-rate" data-rating="3">记得</button>
-                  <button class="btn btn-rate" data-rating="4">太简单</button>
-                </div>
-              </div>
-              <div class="block" id="gradeBlock" hidden>
-                <div class="block-head"><h2>评判结果</h2><span class="score-pill" id="scorePill"></span></div>
-                <div id="gradeBody"></div>
-              </div>
+            <div class="block" id="gradeBlock" hidden>
+              <div class="block-head"><h2>评判结果</h2><span class="score-pill" id="scorePill"></span></div>
+              <div id="gradeBody"></div>
             </div>
           </div>
         </div>

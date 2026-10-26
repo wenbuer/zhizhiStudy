@@ -234,7 +234,6 @@ body {
 }
 .today-actions .btn { flex: 1; text-align: center; }
 .grid-study { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 20px; align-items: start; }
-.grid-exam { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr); gap: 20px; align-items: start; }
 
 /* 练习页顶部的子标签：练习 / 错题；练习里再分随机 / 指定单元 */
 .exam-tabs {
@@ -256,6 +255,7 @@ body {
 }
 .review-side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .review-main { margin: 0; }
+.review-main .block { width: 100%; }
 
 /* 错题列表 */
 .wrong-item {
@@ -416,7 +416,6 @@ body {
 .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 
 .btn-slim { padding: 5px 10px; font-size: 12px; }
-.btn-rate { flex: 1; text-align: center; }
 
 .field { display: block; margin-bottom: 16px; }
 .field-label { display: block; margin-bottom: 6px; font-size: 12.5px; color: var(--fg-muted); }
@@ -862,7 +861,7 @@ body.is-reading .study-card > * {
   line-height: 1.6;
 }
 
-.rate-grid { display: flex; gap: 8px; }
+
 
 .score-pill {
   padding: 3px 10px;

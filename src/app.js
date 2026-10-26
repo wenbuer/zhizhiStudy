@@ -1147,14 +1147,7 @@ async function submitGrade() {
   });
 }
 
-async function submitSelfRating(rating) {
-  const card = state.examCard;
-  if (!card) { toast('先选一道题', 'bad'); return; }
-  const updated = await call('submit_review', { cardId: card.id, rating: rating, mode: 'self' });
-  toast('自评已记录，下次复习 ' + updated.due, 'ok');
-  el('selfNote').textContent = '下次复习：' + updated.due;
-  await refresh();
-}
+
 
 
 /* ── 练习：按已学章节随机出卷 ─────────────── */
@@ -1315,7 +1308,7 @@ async function renderExam() {
     }
   }
   renderExamMain();
-  renderExamSide();
+  renderExamNav();
 }
 
 /* 接着上次做：落到第一道还没答的题 */
@@ -1330,7 +1323,7 @@ function renderExamMain() {
   const box = el('practiceMain');
   if (practice.view === 'paper') {
     box.innerHTML = paperHTML(practice);
-    bindPaper(practice, 'practiceMain', submitPractice, () => { renderExamMain(); renderExamSide(); });
+    bindPaper(practice, 'practiceMain', submitPractice, () => { renderExamMain(); renderExamNav(); });
     return;
   }
   if (practice.view === 'result') { box.innerHTML = resultHTML(practice); return; }
@@ -1354,18 +1347,13 @@ function practiceSetupHTML() {
     '</div>';
 }
 
-function renderExamSide() {
+function renderExamNav() {
   const practice = practiceState();
-  const side = el('practiceSide');
-  if (practice.view !== 'paper' || !practice.items.length) {
-    side.innerHTML = '<div class="block"><div class="block-head"><h2>怎么练</h2></div>' +
-      '<div class="block-note">题量按章节随机：每章 1–3 道；题型也随机，其中至少一道简答题。</div>' +
-      '<div class="block-note">客观题（单选 / 多选 / 判断 / 填空）本地判分，简答题交模型按点给分。</div>' +
-      '<div class="block-note">跳过不答的题不计分，卷子留着——下次打开练习页继续。</div></div>';
-    return;
-  }
-  side.innerHTML = paperNavHTML(practice);
-  bindPaperNav(practice, side, () => { renderExamMain(); renderExamSide(); });
+  const box = el('practiceNav');
+  if (!box) return;
+  if (practice.view !== 'paper' || !practice.items.length) { box.innerHTML = ''; return; }
+  box.innerHTML = paperNavHTML(practice);
+  bindPaperNav(practice, box, () => { renderExamMain(); renderExamNav(); });
 }
 
 async function startPractice() {
@@ -1399,7 +1387,7 @@ async function submitPractice() {
   practice.view = 'result';
   toast('已判分：' + (paper.exam.score || 0) + ' / ' + paper.exam.fullScore + ' 分', 'ok');
   renderExamMain();
-  renderExamSide();
+  renderExamNav();
   await refresh();
 }
 
@@ -2209,7 +2197,7 @@ function bind() {
       return;
     }
     const paperRerender = () => {
-      if (state.view === 'exam') { renderExamMain(); renderExamSide(); }
+      if (state.view === 'exam') { renderExamMain(); renderExamNav(); }
       else { renderQuizMain(); renderQuizSide(); }
     };
     if (event.target.closest('[data-quiz-again]')) {
@@ -2504,10 +2492,6 @@ function bind() {
   });
 
   el('gradeBtn').addEventListener('click', submitGrade);
-  el('rateGrid').addEventListener('click', (event) => {
-    const button = event.target.closest('[data-rating]');
-    if (button) submitSelfRating(Number(button.dataset.rating));
-  });
   el('exportBtn').addEventListener('click', exportGraph);
 
   el('saveSettingsBtn').addEventListener('click', (event) =>
