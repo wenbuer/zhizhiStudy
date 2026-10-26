@@ -550,6 +550,7 @@ async fn book_outline(
 #[tauri::command]
 fn book_create(
     state: State<'_, AppState>,
+    material_id: Option<i64>,
     title: String,
     goal: String,
     origin: String,
@@ -562,11 +563,16 @@ fn book_create(
         .into_iter()
         .map(|chapter| (chapter.title, chapter.intro, chapter.keys))
         .collect();
-    state
-        .store
-        .lock()
-        .unwrap()
-        .insert_book(&title, &goal, &origin, &rows, &now_iso())
+    let store = state.store.lock().unwrap();
+    let material_id = match material_id {
+        Some(id) => id,
+        None => store
+            .insert_material(&title, &origin, "book", 0, "", &now_iso())
+            .map_err(err_str)?,
+    };
+    store.mark_material_book(material_id, &title).map_err(err_str)?;
+    store
+        .insert_book(Some(material_id), &title, &goal, &origin, &rows, &now_iso())
         .map_err(err_str)
 }
 

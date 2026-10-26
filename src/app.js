@@ -55,7 +55,6 @@ const state = {
   shelfTab: 'book',
   /// 成书：书架 / 当前这本 / 待确认的目录 / 生成中的进度
   book: {
-    list: [],
     detail: null,
     outline: null,
     generating: null,
@@ -755,7 +754,7 @@ function renderLearn() {
   const select = el('learnMaterial');
   if (select) {
     const html = ['<option value="">全部素材库</option>'].concat(
-      (state.materials || []).map((m) =>
+      (state.materials || []).filter((m) => m.cardCount > 0).map((m) =>
         '<option value="' + m.id + '">' + escapeHtml(m.title) + '</option>')).join('');
     if (select.dataset.rendered !== html) {
       select.innerHTML = html;
@@ -1905,9 +1904,7 @@ async function detectProxy() {
 }
 
 async function loadShelf() {
-  const [materials, books] = await Promise.all([call('list_materials'), call('book_list')]);
-  state.materials = materials;
-  state.book.list = books;
+  state.materials = await call('list_materials');
   renderShelf();
   paintBook();
 }
@@ -1920,19 +1917,10 @@ function showShelfTab(name) {
   const searching = name === 'search';
   el('bookPane').hidden = !searching;
   el('importPane').hidden = searching;
-  el('bookHead').hidden = !searching;
-  el('bookHint').hidden = !searching;
   renderShelf();
 }
 
 function paintBook() {
-  const detail = state.book.detail;
-  el('bookHead').textContent = detail ? detail.book.title : '在线搜索';
-  el('bookHint').textContent = state.book.generating
-    ? '正在逐章写正文'
-    : detail
-      ? detail.book.origin || ''
-      : '给个书名或主题，上网找资料并排成书';
   el('bookPane').innerHTML = bookMainHTML();
 }
 
@@ -1961,7 +1949,6 @@ function bookFormHTML() {
       <div class="field">
         <span class="field-label">素材</span>
         <p class="book-scope">${escapeHtml(scope)}</p>
-        <span class="field-hint">在右侧书架里点材料行可以挑素材；一份都不挑就按书名上网取料。</span>
       </div>
       <div class="field-row field-row-end">
         <button class="btn btn-primary" data-book="outline">生成目录</button>
@@ -2000,6 +1987,7 @@ function bookReaderHTML() {
     : '';
   const head = `
     <div class="book-head">
+      <h3 class="book-title">${escapeHtml(book.title)}</h3>
       <div class="book-head-row">
         <span class="book-meta">${book.chapters} 章 · 已写 ${book.written}</span>
         <span class="book-tag${done ? ' is-done' : ''}">${done ? '已完稿' : '未完稿'}</span>
@@ -2009,7 +1997,6 @@ function bookReaderHTML() {
       ${progress ? `<div class="result is-ok">${progress}</div>` : ''}
       <div class="field-row">
         <button class="btn btn-slim" data-book="export" data-id="${book.id}">导出 Markdown</button>
-        <button class="btn btn-slim" data-book="delete" data-id="${book.id}">删除</button>
         <button class="btn btn-slim" data-book="new">再写一本</button>
       </div>
     </div>`;
@@ -2028,13 +2015,10 @@ function bookReaderHTML() {
 }
 
 function renderShelf() {
-  const books = state.book.list || [];
-  const materials = state.materials || [];
+  const items = state.materials || [];
   const detail = state.book.detail;
   const picking = state.shelfTab === 'search' && !detail;
-  el('shelfCount').textContent = books.length || materials.length
-    ? books.length + ' 本书 · ' + materials.length + ' 份材料'
-    : '还是空的';
+  const openMaterial = detail ? detail.book.materialId : null;
 
   const busy = state.importing
     ? '<div class="row is-busy"><span class="spinner"></span>' +
@@ -2042,34 +2026,33 @@ function renderShelf() {
       '<div class="row-sub">' + escapeHtml(state.importing.source) + '</div></div></div>'
     : '';
 
-  const bookRows = books.map((book) => `
-    <div class="row${detail && detail.book.id === book.id ? ' is-picked' : ''}" data-open-book="${book.id}">
-      <div class="row-main">
-        <div class="row-title">${escapeHtml(book.title)}</div>
-        <div class="row-sub">书 · ${book.chapters} 章 · 已写 ${book.written}</div>
-      </div>
-      <button class="btn btn-slim" data-book="export" data-id="${book.id}">导出</button>
-      <button class="btn btn-slim" data-book="del" data-id="${book.id}">删除</button>
-    </div>`).join('');
-
-  const matRows = materials.map((m) => {
+  const rows = items.map((m) => {
     const picked = state.book.form.materialIds.includes(m.id);
-    return `<div class="row${picked ? ' is-picked' : ''}" data-material="${m.id}"${picking ? ` data-scope="${m.id}"` : ''}>
-      <div class="row-main">
-        ${state.renaming === m.id
-          ? `<input class="inline-input" data-rename="${m.id}" value="${escapeHtml(m.title)}" />`
-          : `<div class="row-title">${escapeHtml(m.title)}</div>`}
-        <div class="row-sub">材料 · ${m.sourceKind}${m.pendingCount ? ' · 待补考点 ' + m.pendingCount : ''} · ${m.chars} 字 · ${m.cardCount} 个单元 · ${escapeHtml(m.createdAt.slice(0, 10))}</div>
-      </div>
-      ${m.pendingCount ? `<button class="btn btn-slim" data-act="polish" data-id="${m.id}">补考点</button>` : ''}
-      <button class="btn btn-slim" data-act="rename" data-id="${m.id}">重命名</button>
-      <button class="btn btn-slim" data-act="export" data-id="${m.id}">导出</button>
-      <button class="btn btn-slim" data-act="del" data-id="${m.id}">删除</button>
-    </div>`;
+    const active = openMaterial != null && openMaterial === m.id;
+    const parts = [];
+    if (m.chapters) parts.push(m.chapters + ' 章');
+    if (m.cardCount) parts.push(m.cardCount + ' 个单元');
+    if (m.pendingCount) parts.push('待补 ' + m.pendingCount);
+    parts.push(escapeHtml(String(m.createdAt).slice(0, 10)));
+    return `<div class="row${picked || active ? ' is-picked' : ''}" data-item="${m.id}"` +
+      (picking && !m.chapters ? ` data-scope="${m.id}"` : '') +
+      (m.bookId ? ` data-open-book="${m.bookId}"` : '') + '>' +
+      '<div class="row-main">' +
+      (state.renaming === m.id
+        ? `<input class="inline-input" data-rename="${m.id}" value="${escapeHtml(m.title)}" />`
+        : `<div class="row-title">${escapeHtml(m.title)}</div>`) +
+      `<div class="row-sub">${parts.join(' · ')}</div></div>` +
+      (m.pendingCount ? `<button class="btn btn-slim" data-act="polish" data-id="${m.id}">补考点</button>` : '') +
+      `<button class="btn btn-slim" data-act="rename" data-id="${m.id}">重命名</button>` +
+      (m.bookId
+        ? `<button class="btn btn-slim" data-book="export" data-id="${m.bookId}">导出</button>`
+        : `<button class="btn btn-slim" data-act="export" data-id="${m.id}">导出</button>`) +
+      `<button class="btn btn-slim" data-act="del" data-id="${m.id}">删除</button>` +
+      '</div>';
   }).join('');
 
-  el('shelfList').innerHTML = busy + bookRows + matRows +
-    (books.length || materials.length ? '' : '<div class="empty">书架还是空的：切到「本地导入」加材料，或在上边填个书名上网搜。</div>');
+  el('shelfList').innerHTML = busy + rows +
+    (items.length ? '' : '<div class="empty">书架还是空的：切到「本地导入」加材料，或在上边填个书名上网搜。</div>');
 
   if (state.renaming) {
     const input = document.querySelector('[data-rename]');
@@ -2115,6 +2098,7 @@ async function createAndWrite(button) {
   if (!outline) return;
   const form = state.book.form;
   const bookId = await withBusy(button, '建书中…', () => call('book_create', {
+    materialId: outline.materialId == null ? null : outline.materialId,
     title: form.title.trim(),
     goal: form.goal.trim(),
     origin: outline.origin,
@@ -2138,14 +2122,6 @@ async function exportBook(bookId) {
   const path = await call('book_export', { bookId });
   toast('已导出：' + path, 'ok');
   await call('reveal_path', { path }).catch(() => {});
-}
-
-async function deleteBook(bookId) {
-  if (!confirm('删除这本书？已写的正文会一起删掉，材料不受影响。')) return;
-  await call('book_delete', { bookId });
-  state.book.detail = null;
-  await loadShelf();
-  toast('已删除', 'ok');
 }
 
 async function runGenerate(bookId) {
@@ -2217,7 +2193,6 @@ function bind() {
       paintBook();
       renderShelf();
     } else if (action === 'export') exportBook(id).catch(() => {});
-    else if (action === 'del') deleteBook(id).catch(() => {});
     else if (action === 'continue') runGenerate(id).catch(() => {});
     else if (action === 'jump') {
       const node = el('bookCh' + trigger.dataset.seq);

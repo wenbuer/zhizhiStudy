@@ -117,18 +117,11 @@
                 <button class="tab is-active" data-shelf-tab="search">在线搜索</button>
                 <button class="tab" data-shelf-tab="local">本地导入</button>
               </div>
-              <h2 class="shelf-title" id="bookHead">在线搜索</h2>
-              <span class="block-hint" id="bookHint"></span>
             </div>
 
             <div id="bookPane"></div>
 
             <div id="importPane" hidden>
-              <div class="block-head">
-                <h2>导入新材料</h2>
-                <span class="block-hint">网页链接、PDF、Word、Markdown、纯文本均可</span>
-              </div>
-
             <label class="field">
               <span class="field-label">链接或主题</span>
               <div class="field-row">
@@ -136,7 +129,6 @@
                        placeholder="粘贴文章链接，或直接写想学的主题，例如：RAG 分块策略" />
                 <button class="btn btn-primary" id="urlBtn">智能导入</button>
               </div>
-              <span class="field-hint">默认交给模型整理内容：链接会先跟随跳转抓取，打不开就自动改用搜索；模型不可用时退回本地解析。</span>
             </label>
 
             <label class="field">
@@ -162,7 +154,7 @@
           </div>
 
           <div class="block book-side" id="bookSide">
-            <div class="block-head"><h2>书架</h2><span class="block-hint" id="shelfCount"></span></div>
+            <div class="block-head"><h2>书架</h2></div>
             <div class="list" id="shelfList"></div>
             <div class="block-head" id="tocHead" hidden><h2>目录</h2></div>
             <div class="book-toc" id="bookToc"></div>

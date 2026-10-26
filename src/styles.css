@@ -1465,9 +1465,6 @@ body.is-reading .study-card > * {
   margin-bottom: 16px;
   flex-wrap: wrap;
 }
-.shelf-title { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
-.shelf-head .block-hint { margin-left: auto; }
-
 .book-main { min-width: 0; }
 
 .book-form .field + .field { margin-top: 14px; }

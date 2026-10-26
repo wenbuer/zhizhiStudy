@@ -123,12 +123,13 @@ CREATE TABLE IF NOT EXISTS snapshots (
 );
 
 CREATE TABLE IF NOT EXISTS books (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    title      TEXT NOT NULL,
-    goal       TEXT NOT NULL DEFAULT '',
-    origin     TEXT NOT NULL DEFAULT '',
-    status     TEXT NOT NULL DEFAULT 'draft',
-    created_at TEXT NOT NULL
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    material_id INTEGER,
+    title       TEXT NOT NULL,
+    goal        TEXT NOT NULL DEFAULT '',
+    origin      TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL DEFAULT 'draft',
+    created_at  TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS book_chapters (
@@ -156,6 +157,10 @@ pub struct Material {
     pub card_count: i64,
     /// 还没有考点的单元数（模型不可用或调用失败时会攒下来）
     pub pending_count: i64,
+    /// 这份材料就是某本书时，给出书的 id
+    pub book_id: Option<i64>,
+    /// 书已经写出来的章数；普通材料是 0
+    pub chapters: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -220,6 +225,7 @@ pub struct Stats {
 #[serde(rename_all = "camelCase")]
 pub struct Book {
     pub id: i64,
+    pub material_id: Option<i64>,
     pub title: String,
     pub goal: String,
     pub origin: String,
@@ -261,6 +267,7 @@ impl Store {
         let _ = conn.execute("ALTER TABLE cards ADD COLUMN content TEXT NOT NULL DEFAULT ''", []);
         let _ = conn.execute("ALTER TABLE cards ADD COLUMN exam_notes TEXT NOT NULL DEFAULT '[]'", []);
         let _ = conn.execute("ALTER TABLE exams ADD COLUMN kind TEXT NOT NULL DEFAULT 'quiz'", []);
+        let _ = conn.execute("ALTER TABLE books ADD COLUMN material_id INTEGER", []);
         Ok(Self { conn })
     }
 
@@ -292,14 +299,19 @@ impl Store {
             "SELECT m.id, m.title, m.source, m.source_kind, m.chars, m.created_at,
                     (SELECT COUNT(*) FROM cards c WHERE c.material_id = m.id),
                     (SELECT COUNT(*) FROM cards c
-                      WHERE c.material_id = m.id AND TRIM(c.question) = '')
+                      WHERE c.material_id = m.id AND TRIM(c.question) = ''),
+                    (SELECT b.id FROM books b WHERE b.material_id = m.id),
+                    (SELECT COUNT(*) FROM book_chapters bc
+                       JOIN books b ON b.id = bc.book_id
+                      WHERE b.material_id = m.id AND TRIM(bc.body) <> '')
              FROM materials m ORDER BY m.id DESC",
         )?;
         let rows = stmt.query_map([], |r| {
             Ok(Material {
                 id: r.get(0)?, title: r.get(1)?, source: r.get(2)?, source_kind: r.get(3)?,
                 chars: r.get(4)?, created_at: r.get(5)?, card_count: r.get(6)?,
-                pending_count: r.get(7)?,
+                pending_count: r.get(7)?, book_id: r.get(8).unwrap_or(None),
+                chapters: r.get(9).unwrap_or(0),
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -314,7 +326,17 @@ impl Store {
     }
 
     pub fn delete_material(&self, id: i64) -> Result<()> {
+        self.conn.execute("DELETE FROM book_chapters WHERE book_id IN (SELECT id FROM books WHERE material_id = ?1)", params![id])?;
+        self.conn.execute("DELETE FROM books WHERE material_id = ?1", params![id])?;
         self.conn.execute("DELETE FROM materials WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn mark_material_book(&self, id: i64, title: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE materials SET title = ?2, source_kind = 'book' WHERE id = ?1",
+            params![id, title],
+        )?;
         Ok(())
     }
 
@@ -811,7 +833,7 @@ impl Store {
     }
 
     const BOOK_SELECT: &'static str =
-        "SELECT b.id, b.title, b.goal, b.origin, b.status, b.created_at,
+        "SELECT b.id, b.material_id, b.title, b.goal, b.origin, b.status, b.created_at,
                 (SELECT COUNT(*) FROM book_chapters c WHERE c.book_id = b.id) AS chapters,
                 (SELECT COUNT(*) FROM book_chapters c WHERE c.book_id = b.id AND TRIM(c.body) <> '') AS written
          FROM books b";
@@ -819,6 +841,7 @@ impl Store {
     fn map_book(r: &rusqlite::Row<'_>) -> rusqlite::Result<Book> {
         Ok(Book {
             id: r.get("id")?,
+            material_id: r.get("material_id").unwrap_or(None),
             title: r.get("title")?,
             goal: r.get("goal").unwrap_or_default(),
             origin: r.get("origin").unwrap_or_default(),
@@ -831,6 +854,7 @@ impl Store {
 
     pub fn insert_book(
         &self,
+        material_id: Option<i64>,
         title: &str,
         goal: &str,
         origin: &str,
@@ -838,8 +862,8 @@ impl Store {
         created_at: &str,
     ) -> Result<i64> {
         self.conn.execute(
-            "INSERT INTO books (title, goal, origin, status, created_at) VALUES (?1, ?2, ?3, 'draft', ?4)",
-            params![title, goal, origin, created_at],
+            "INSERT INTO books (material_id, title, goal, origin, status, created_at) VALUES (?1, ?2, ?3, ?4, 'draft', ?5)",
+            params![material_id, title, goal, origin, created_at],
         )?;
         let id = self.conn.last_insert_rowid();
         for (index, (chapter_title, intro, keys)) in chapters.iter().enumerate() {
@@ -908,8 +932,16 @@ impl Store {
     }
 
     pub fn delete_book(&self, id: i64) -> Result<()> {
+        let material_id: Option<i64> = self
+            .conn
+            .query_row("SELECT material_id FROM books WHERE id = ?1", params![id], |r| r.get(0))
+            .optional()?
+            .flatten();
         self.conn.execute("DELETE FROM book_chapters WHERE book_id = ?1", params![id])?;
         self.conn.execute("DELETE FROM books WHERE id = ?1", params![id])?;
+        if let Some(material_id) = material_id {
+            self.conn.execute("DELETE FROM materials WHERE id = ?1", params![material_id])?;
+        }
         Ok(())
     }
 
@@ -1261,7 +1293,7 @@ mod tests {
             ("第二章".to_string(), String::new(), vec![format!("c:{}", cards[1].id)]),
         ];
         let book = store
-            .insert_book("小书", "学会它", "已有材料", &rows, "2026-10-01")
+            .insert_book(Some(material), "小书", "学会它", "已有材料", &rows, "2026-10-01")
             .unwrap();
 
         let chapters = store.book_chapters(book).unwrap();
