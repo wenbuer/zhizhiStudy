@@ -55,11 +55,9 @@ const state = {
   shelfTab: 'book',
   /// 成书：书架 / 当前这本 / 待确认的目录 / 生成中的进度
   book: {
-    detail: null,
-    outline: null,
-    generating: null,
     form: { title: '', goal: '', materialIds: [] },
   },
+  learnBook: null,
 };
 
 const VIEW_TITLES = {
@@ -745,10 +743,10 @@ function learnedFoldHtml(learned, activeId) {
 }
 
 function renderLearn() {
-  // 换单元、换筛选都会重画正文，浮标、译文卡片和问答抽屉一起收掉
   hideSelectActions();
   closeTransPop();
   if (state.qa.open) closeQaDrawer();
+  if (state.learnBook) { renderLearnBook(); return; }
 
   // 素材库切换器
   const select = el('learnMaterial');
@@ -1914,20 +1912,15 @@ function showShelfTab(name) {
   document.querySelectorAll('[data-shelf-tab]').forEach((node) => {
     node.classList.toggle('is-active', node.dataset.shelfTab === name);
   });
-  const searching = name === 'search';
-  el('bookPane').hidden = !searching;
-  el('importPane').hidden = searching;
+  const generating = name === 'search';
+  el('bookPane').hidden = !generating;
+  el('importPane').hidden = generating;
+  if (generating) paintBook();
   renderShelf();
 }
 
 function paintBook() {
-  el('bookPane').innerHTML = bookMainHTML();
-}
-
-function bookMainHTML() {
-  if (state.book.detail) return bookReaderHTML();
-  if (state.book.outline) return bookOutlineHTML();
-  return bookFormHTML();
+  el('bookPane').innerHTML = bookFormHTML();
 }
 
 function bookFormHTML() {
@@ -1943,74 +1936,14 @@ function bookFormHTML() {
         <input id="bookGoal" type="text" placeholder="例如：三个月内能自己搭一套检索问答" value="${escapeHtml(form.goal)}" />
       </label>
       <div class="field-row field-row-end">
-        <button class="btn btn-primary" data-book="outline">生成目录</button>
+        <button class="btn btn-primary" data-book="generate">开始生成</button>
       </div>
     </div>`;
-}
-
-function bookOutlineHTML() {
-  const outline = state.book.outline;
-  const rows = outline.chapters.map((chapter) => `
-    <li>
-      <div class="book-outline-head">
-        <b>${escapeHtml(chapter.title)}</b>
-        <span class="book-outline-n">${chapter.keys.length} 条素材</span>
-      </div>
-      <p class="book-outline-intro">${escapeHtml(chapter.intro)}</p>
-    </li>`).join('');
-  return `
-    <div class="book-outline">
-      <p class="book-origin">${escapeHtml(outline.origin)}</p>
-      <ol class="book-outline-list">${rows}</ol>
-      <div class="field-row field-row-end">
-        <button class="btn btn-slim" data-book="back">返回改一下</button>
-        <button class="btn btn-primary" data-book="create">开始写</button>
-      </div>
-    </div>`;
-}
-
-function bookReaderHTML() {
-  const detail = state.book.detail;
-  const book = detail.book;
-  const gen = state.book.generating;
-  const done = book.chapters > 0 && book.written >= book.chapters;
-  const progress = gen
-    ? `正在写正文：已写 ${gen.written} 章，剩 ${gen.remaining == null ? '…' : gen.remaining} 章${gen.error ? '（' + escapeHtml(gen.error) + '）' : ''}`
-    : '';
-  const head = `
-    <div class="book-head">
-      <h3 class="book-title">${escapeHtml(book.title)}</h3>
-      <div class="book-head-row">
-        <span class="book-meta">${book.chapters} 章 · 已写 ${book.written}</span>
-        <span class="book-tag${done ? ' is-done' : ''}">${done ? '已完稿' : '未完稿'}</span>
-      </div>
-      ${book.goal ? `<p class="book-goal">${escapeHtml(book.goal)}</p>` : ''}
-      <p class="book-origin">${escapeHtml(book.origin)}</p>
-      ${progress ? `<div class="result is-ok">${progress}</div>` : ''}
-      <div class="field-row">
-        <button class="btn btn-slim" data-book="export" data-id="${book.id}">导出 Markdown</button>
-        <button class="btn btn-slim" data-book="new">再写一本</button>
-      </div>
-    </div>`;
-  const chapters = detail.chapters.map((chapter) => {
-    const body = chapter.body.trim();
-    return `
-      <article class="book-chapter" id="bookCh${chapter.seq}">
-        <h3><span class="book-chapter-no">第 ${chapter.seq} 章</span>${escapeHtml(chapter.title)}</h3>
-        ${chapter.intro ? `<p class="book-chapter-intro">${escapeHtml(chapter.intro)}</p>` : ''}
-        ${body
-          ? `<div class="book-prose">${renderMarkdown(body)}</div>`
-          : `<div class="book-pending">这一章还没写。<button class="btn btn-slim" data-book="continue" data-id="${book.id}">继续生成</button></div>`}
-      </article>`;
-  }).join('');
-  return head + chapters;
 }
 
 function renderShelf() {
   const items = state.materials || [];
-  const detail = state.book.detail;
-  const picking = state.shelfTab === 'search' && !detail;
-  const openMaterial = detail ? detail.book.materialId : null;
+  const picking = state.shelfTab === 'search';
 
   const busy = state.importing
     ? '<div class="row is-busy"><span class="spinner"></span>' +
@@ -2020,15 +1953,14 @@ function renderShelf() {
 
   const rows = items.map((m) => {
     const picked = state.book.form.materialIds.includes(m.id);
-    const active = openMaterial != null && openMaterial === m.id;
     const parts = [];
     if (m.chapters) parts.push(m.chapters + ' 章');
     if (m.cardCount) parts.push(m.cardCount + ' 个单元');
     if (m.pendingCount) parts.push('待补 ' + m.pendingCount);
     parts.push(escapeHtml(String(m.createdAt).slice(0, 10)));
-    return `<div class="row${picked || active ? ' is-picked' : ''}" data-item="${m.id}"` +
+    return `<div class="row${picked ? ' is-picked' : ''}" data-item="${m.id}"` +
       (picking && !m.chapters ? ` data-scope="${m.id}"` : '') +
-      (m.bookId ? ` data-open-book="${m.bookId}"` : '') + '>' +
+      (m.bookId ? ` data-read-book="${m.bookId}"` : '') + '>' +
       '<div class="row-main">' +
       (state.renaming === m.id
         ? `<input class="inline-input" data-rename="${m.id}" value="${escapeHtml(m.title)}" />`
@@ -2058,56 +1990,79 @@ function renderShelf() {
       input.addEventListener('blur', () => commitRename(input));
     }
   }
-
-  el('tocHead').hidden = !detail;
-  el('bookToc').innerHTML = detail
-    ? detail.chapters.map((chapter) => `
-      <button class="book-toc-row" data-book="jump" data-seq="${chapter.seq}">
-        <span class="book-toc-no">${chapter.seq}</span>${escapeHtml(chapter.title)}
-      </button>`).join('')
-    : '';
 }
 
-async function runOutline(button) {
+async function generateBook(button) {
   const form = state.book.form;
   const title = form.title.trim();
-  if (!title) { toast('先给这本书起个名字', 'bad'); return; }
-  await withBusy(button, '排目录…', async () => {
+  if (!title) { toast('先填书名或主题', 'bad'); return; }
+  await withBusy(button, '生成中…', async () => {
     const outline = await call('book_outline', {
       title,
       goal: form.goal.trim(),
       materialIds: form.materialIds.slice(),
     });
-    state.book.outline = outline;
-    state.book.detail = null;
+    const bookId = await call('book_create', {
+      materialId: outline.materialId == null ? null : outline.materialId,
+      title,
+      goal: form.goal.trim(),
+      origin: outline.origin,
+      chapters: outline.chapters,
+    });
+    for (let round = 0; round < 20; round += 1) {
+      const step = await call('book_generate_step', { bookId, limit: 2 });
+      if (step.done || step.remaining === 0) break;
+      if (step.written === 0 && step.error) break;
+    }
+    state.book.form = { title: '', goal: '', materialIds: [] };
     paintBook();
-    toast('目录排好了：' + outline.chapters.length + ' 章', 'ok');
+    await loadShelf();
+    toast('生成完成', 'ok');
   }).catch(() => {});
 }
 
-async function createAndWrite(button) {
-  const outline = state.book.outline;
-  if (!outline) return;
-  const form = state.book.form;
-  const bookId = await withBusy(button, '建书中…', () => call('book_create', {
-    materialId: outline.materialId == null ? null : outline.materialId,
-    title: form.title.trim(),
-    goal: form.goal.trim(),
-    origin: outline.origin,
-    chapters: outline.chapters,
-  })).catch(() => null);
-  if (!bookId) return;
-  state.book.outline = null;
-  await openBook(bookId);
-  await runGenerate(bookId).catch(() => {});
-  await loadShelf().catch(() => {});
+async function openBookInLearn(bookId) {
+  const detail = await call('book_get', { bookId });
+  state.learnBook = { bookId, title: detail.book.title, chapters: detail.chapters, index: 0 };
+  state.learnedOnly = false;
+  switchView('learn');
 }
 
-async function openBook(bookId) {
-  state.book.detail = await call('book_get', { bookId });
-  state.book.outline = null;
-  paintBook();
-  renderShelf();
+function renderLearnBook() {
+  const book = state.learnBook;
+  const chapters = book.chapters || [];
+  if (!chapters.length) {
+    el('learnQueue').innerHTML = '<div class="empty">这本书还没有章节</div>';
+    el('learnCard').innerHTML = '';
+    state.learnCardId = null;
+    return;
+  }
+  const index = Math.max(0, Math.min(book.index || 0, chapters.length - 1));
+  const chapter = chapters[index];
+  state.learnList = [];
+  state.learnCurrentId = null;
+  el('learnQueue').innerHTML = chapters.map((item, at) =>
+    unitRowHtml({ id: at, title: '第 ' + item.seq + ' 章 ' + item.title }, index)).join('');
+  const nav = '<div class="card-actions">' +
+    (index > 0 ? '<button class="btn" data-book-chapter="' + (index - 1) + '">上一章</button>' : '') +
+    (index < chapters.length - 1
+      ? '<button class="btn btn-primary" data-book-chapter="' + (index + 1) + '">下一章</button>'
+      : '') +
+    '</div>';
+  el('learnCard').innerHTML =
+    '<div class="card-head"><div class="card-head-text">' +
+    '<div class="card-meta">' + escapeHtml(book.title) + ' · 第 ' + chapter.seq + ' 章</div>' +
+    '<h3 class="card-title">' + escapeHtml(chapter.title) + '</h3></div></div>' +
+    '<div class="unit-body">' +
+    (chapter.body.trim()
+      ? renderMarkdown(stripLeadTitle(chapter.body, chapter.title))
+      : '<p class="block-note">这一章还没写出来。</p>') +
+    '</div>' + nav;
+  if (state.learnCardId !== 'book' + index) {
+    state.learnCardId = 'book' + index;
+    el('learnCard').scrollTop = 0;
+  }
+  renderFlowcharts(el('learnCard'));
 }
 
 async function exportBook(bookId) {
@@ -2116,34 +2071,14 @@ async function exportBook(bookId) {
   await call('reveal_path', { path }).catch(() => {});
 }
 
-async function runGenerate(bookId) {
-  state.book.generating = { written: 0, remaining: null, error: '' };
-  paintBook();
-  let guard = 0;
-  while (guard < 40) {
-    guard += 1;
-    const step = await call('book_generate_step', { bookId, limit: 2 });
-    state.book.generating = {
-      written: state.book.generating.written + step.written,
-      remaining: step.remaining,
-      error: step.error || '',
-    };
-    paintBook();
-    if (step.done || step.remaining === 0) break;
-    if (step.written === 0 && step.error) break;
-  }
-  state.book.generating = null;
-  await openBook(bookId);
-  const missing = state.book.detail ? state.book.detail.chapters.some((chapter) => !chapter.body.trim()) : false;
-  toast(missing ? '有章节没写出来，点「继续生成」重试' : '这本书写完了', missing ? 'bad' : 'ok');
-}
-
 /* ── 事件绑定 ─────────────────────────────── */
 
 function bind() {
   el('nav').addEventListener('click', (event) => {
     const button = event.target.closest('.nav-item');
-    if (button) switchView(button.dataset.view);
+    if (!button) return;
+    state.learnBook = null;
+    switchView(button.dataset.view);
   });
 
   el('shelfTabs').addEventListener('click', (event) => {
@@ -2157,8 +2092,12 @@ function bind() {
     if (event.target.id === 'bookGoal') state.book.form.goal = event.target.value;
   });
   bookView.addEventListener('click', (event) => {
-    const rowBook = event.target.closest('[data-open-book]');
-    if (rowBook) { openBook(Number(rowBook.dataset.openBook)).catch(() => {}); return; }
+    const rowBook = event.target.closest('[data-read-book]');
+    if (rowBook && !event.target.closest('[data-act]') && !event.target.closest('[data-book]')
+      && !event.target.closest('[data-scope]')) {
+      openBookInLearn(Number(rowBook.dataset.readBook)).catch(() => {});
+      return;
+    }
 
     const scopeRow = event.target.closest('[data-scope]');
     if (scopeRow && !event.target.closest('[data-act]') && !event.target.closest('input')) {
@@ -2175,21 +2114,8 @@ function bind() {
     if (!trigger) return;
     const action = trigger.dataset.book;
     const id = Number(trigger.dataset.id || 0);
-    if (action === 'outline') runOutline(trigger);
-    else if (action === 'create') createAndWrite(trigger);
-    else if (action === 'back') { state.book.outline = null; paintBook(); }
-    else if (action === 'new') {
-      state.book.detail = null;
-      state.book.outline = null;
-      state.book.form = { title: '', goal: '', materialIds: [] };
-      paintBook();
-      renderShelf();
-    } else if (action === 'export') exportBook(id).catch(() => {});
-    else if (action === 'continue') runGenerate(id).catch(() => {});
-    else if (action === 'jump') {
-      const node = el('bookCh' + trigger.dataset.seq);
-      if (node) node.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+    if (action === 'generate') generateBook(trigger);
+    else if (action === 'export') exportBook(id).catch(() => {});
   });
 
   el('examTabs').addEventListener('click', (event) => {
@@ -2259,6 +2185,11 @@ function bind() {
     }
     if (row && !event.target.closest('button')) { loadExamCard(Number(row.dataset.card), row.dataset.mode); return; }
     if (learnRow) {
+      if (state.learnBook) {
+        state.learnBook.index = Number(learnRow.dataset.learn);
+        renderLearn();
+        return;
+      }
       const idx = (state.learnList || []).findIndex((c) => c.id === Number(learnRow.dataset.learn));
       if (idx >= 0) { state.learnIndex = idx; renderLearn(); }
       return;
@@ -2433,7 +2364,16 @@ function bind() {
     renderLearn();
   });
 
+  document.addEventListener('click', (event) => {
+    const chapterBtn = event.target.closest('[data-book-chapter]');
+    if (chapterBtn && state.learnBook) {
+      state.learnBook.index = Number(chapterBtn.dataset.bookChapter);
+      renderLearn();
+    }
+  });
+
   el('learnMaterial').addEventListener('change', (event) => {
+    state.learnBook = null;
     state.learnMaterial = Number(event.target.value) || null;
     state.learnIndex = 0;
     renderLearn();
