@@ -1097,11 +1097,7 @@ function showExamCard(card, mode) {
   state.examMode = mode || 'exam';
   el('examHeading').textContent = card.title;
   el('examSource').textContent = card.materialTitle + ' · 到期 ' + card.due + ' · 已复习 ' + card.reps + ' 次';
-  el('examQuestion').textContent = card.question || '（这张卡没有题目，可先学一遍再自评）';
-  el('examNotesPanel').innerHTML = (card.examNotes || []).length
-    ? '<div class="unit-notes"><div class="grade-sub">考试里错过的点</div><ul class="grade-list">' +
-      card.examNotes.map((note) => '<li>' + escapeHtml(note) + '</li>').join('') + '</ul></div>'
-    : '';
+  el('examQuestion').textContent = card.question || '（这张卡还没有自测题）';
   el('examAnswer').value = '';
   el('gradeBlock').hidden = true;
 }
@@ -1135,11 +1131,13 @@ async function submitGrade() {
     el('gradeBlock').hidden = false;
     el('scorePill').textContent = result.score + ' / 10 · ' + ratingLabel(result.rating);
     const missed = (result.missed || []).map((m) => '<li>' + escapeHtml(m) + '</li>').join('');
+    const notes = (card.examNotes || []).map((note) => '<li>' + escapeHtml(note) + '</li>').join('');
     el('gradeBody').innerHTML =
       '<p class="grade-text">' + escapeHtml(result.feedback).replace(/\n/g, '<br>') + '</p>' +
       (missed ? '<div class="grade-sub">遗漏要点</div><ul class="grade-list">' + missed + '</ul>' : '') +
       (result.suggestion ? '<div class="grade-sub">参考回答</div><p class="grade-text">' +
         escapeHtml(result.suggestion) + '</p>' : '') +
+      (notes ? '<div class="grade-sub">考试里错过的点</div><ul class="grade-list">' + notes + '</ul>' : '') +
       '<div class="grade-sub">下次复习 ' + updated.due + '（' + Math.max(1, Math.round(
         (new Date(updated.due) - new Date(today())) / 86400000)) + ' 天后）</div>';
     toast('已排到 ' + updated.due, 'ok');
