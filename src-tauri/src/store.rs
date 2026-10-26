@@ -121,6 +121,27 @@ CREATE TABLE IF NOT EXISTS snapshots (
     payload    TEXT NOT NULL,
     svg        TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS books (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    title      TEXT NOT NULL,
+    goal       TEXT NOT NULL DEFAULT '',
+    origin     TEXT NOT NULL DEFAULT '',
+    status     TEXT NOT NULL DEFAULT 'draft',
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS book_chapters (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    seq     INTEGER NOT NULL,
+    title   TEXT NOT NULL,
+    intro   TEXT NOT NULL DEFAULT '',
+    body    TEXT NOT NULL DEFAULT '',
+    keys    TEXT NOT NULL DEFAULT '[]'
+);
+
+CREATE INDEX IF NOT EXISTS idx_book_chapters_book ON book_chapters(book_id);
 ";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -193,6 +214,33 @@ pub struct Stats {
     pub stage: String,
     pub stage_progress: f64,
     pub next_stage: String,
+}
+
+/// 一本书：目录已定、正文可能还在分批生成。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Book {
+    pub id: i64,
+    pub title: String,
+    pub goal: String,
+    pub origin: String,
+    /// draft 只有目录 / done 每章都有正文
+    pub status: String,
+    pub created_at: String,
+    pub chapters: i64,
+    pub written: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BookChapter {
+    pub id: i64,
+    pub seq: i64,
+    pub title: String,
+    pub intro: String,
+    pub body: String,
+    /// 本章引用的素材卡 id，回看时能跳到出处
+    pub keys: Vec<String>,
 }
 
 pub struct Store {
@@ -764,6 +812,113 @@ impl Store {
         Ok(())
     }
 
+    // ── 成书 ─────────────────────────────────────────────
+
+    const BOOK_SELECT: &'static str =
+        "SELECT b.id, b.title, b.goal, b.origin, b.status, b.created_at,
+                (SELECT COUNT(*) FROM book_chapters c WHERE c.book_id = b.id) AS chapters,
+                (SELECT COUNT(*) FROM book_chapters c WHERE c.book_id = b.id AND TRIM(c.body) <> '') AS written
+         FROM books b";
+
+    fn map_book(r: &rusqlite::Row<'_>) -> rusqlite::Result<Book> {
+        Ok(Book {
+            id: r.get("id")?,
+            title: r.get("title")?,
+            goal: r.get("goal").unwrap_or_default(),
+            origin: r.get("origin").unwrap_or_default(),
+            status: r.get("status").unwrap_or_else(|_| "draft".to_string()),
+            created_at: r.get("created_at")?,
+            chapters: r.get("chapters").unwrap_or(0),
+            written: r.get("written").unwrap_or(0),
+        })
+    }
+
+    /// 落一本书：目录先定下来，正文留给 book_generate_step 分批补。
+    pub fn insert_book(
+        &self,
+        title: &str,
+        goal: &str,
+        origin: &str,
+        chapters: &[(String, String, Vec<String>)],
+        created_at: &str,
+    ) -> Result<i64> {
+        self.conn.execute(
+            "INSERT INTO books (title, goal, origin, status, created_at) VALUES (?1, ?2, ?3, 'draft', ?4)",
+            params![title, goal, origin, created_at],
+        )?;
+        let id = self.conn.last_insert_rowid();
+        for (index, (chapter_title, intro, keys)) in chapters.iter().enumerate() {
+            self.conn.execute(
+                "INSERT INTO book_chapters (book_id, seq, title, intro, body, keys)
+                 VALUES (?1, ?2, ?3, ?4, '', ?5)",
+                params![id, index as i64 + 1, chapter_title, intro, serde_json::to_string(keys)?],
+            )?;
+        }
+        Ok(id)
+    }
+
+    pub fn list_books(&self) -> Result<Vec<Book>> {
+        let sql = format!("{} ORDER BY b.id DESC", Self::BOOK_SELECT);
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map([], |r| Self::map_book(r))?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn get_book(&self, id: i64) -> Result<Option<Book>> {
+        let sql = format!("{} WHERE b.id = ?1", Self::BOOK_SELECT);
+        Ok(self.conn.query_row(&sql, params![id], |r| Self::map_book(r)).optional()?)
+    }
+
+    pub fn book_chapters(&self, book_id: i64) -> Result<Vec<BookChapter>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, seq, title, intro, body, keys FROM book_chapters
+             WHERE book_id = ?1 ORDER BY seq ASC",
+        )?;
+        let rows = stmt.query_map(params![book_id], |r| {
+            Ok(BookChapter {
+                id: r.get("id")?,
+                seq: r.get("seq")?,
+                title: r.get("title")?,
+                intro: r.get("intro").unwrap_or_default(),
+                body: r.get("body").unwrap_or_default(),
+                keys: parse_list(&r.get::<_, String>("keys").unwrap_or_default()),
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// 还没写正文的章节，按顺序取前 N 章（每次调用写一批，进度可见、失败可续）。
+    pub fn pending_chapters(&self, book_id: i64, limit: i64) -> Result<Vec<BookChapter>> {
+        Ok(self
+            .book_chapters(book_id)?
+            .into_iter()
+            .filter(|chapter| chapter.body.trim().is_empty())
+            .take(limit.max(1) as usize)
+            .collect())
+    }
+
+    pub fn fill_chapter(&self, id: i64, body: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE book_chapters SET body = ?2 WHERE id = ?1",
+            params![id, body],
+        )?;
+        Ok(())
+    }
+
+    pub fn set_book_status(&self, id: i64, status: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE books SET status = ?2 WHERE id = ?1",
+            params![id, status],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_book(&self, id: i64) -> Result<()> {
+        self.conn.execute("DELETE FROM book_chapters WHERE book_id = ?1", params![id])?;
+        self.conn.execute("DELETE FROM books WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
     const EXAM_SELECT: &'static str =
         "SELECT e.*, (SELECT COUNT(*) FROM exam_items i WHERE i.exam_id = e.id AND i.stem <> '') AS made
          FROM exams e";
@@ -1096,6 +1251,42 @@ mod tests {
 
         assert_eq!(titles(&store.learning_cards(60).unwrap()), ["章节1-2"]);
         assert_eq!(titles(&store.learned_cards(-1).unwrap()), ["章节1-1"]);
+    }
+
+    /// 成书：目录先落库，正文按章补齐；写完的章不再回到待写队列。
+    #[test]
+    fn book_outline_then_fill_chapters() {
+        let store = temp_store("book-chapters");
+        let material = store
+            .insert_material("材料", "in.md", "md", 10, "正文", "2026-10-01")
+            .unwrap();
+        store.insert_cards(material, &[unit("章节1-1"), unit("章节1-2")], "2026-10-01").unwrap();
+        let cards = store.list_cards(Some(material)).unwrap();
+
+        let rows = vec![
+            ("第一章".to_string(), "导语一".to_string(), vec![format!("c:{}", cards[0].id)]),
+            ("第二章".to_string(), String::new(), vec![format!("c:{}", cards[1].id)]),
+        ];
+        let book = store
+            .insert_book("小书", "学会它", "已有材料", &rows, "2026-10-01")
+            .unwrap();
+
+        let chapters = store.book_chapters(book).unwrap();
+        assert_eq!(chapters.len(), 2);
+        assert_eq!(chapters[1].seq, 2);
+        assert_eq!(chapters[0].keys, vec![format!("c:{}", cards[0].id)]);
+
+        store.fill_chapter(chapters[0].id, "正文一").unwrap();
+        let pending = store.pending_chapters(book, 5).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].title, "第二章");
+
+        let book_row = store.get_book(book).unwrap().unwrap();
+        assert_eq!((book_row.chapters, book_row.written), (2, 1));
+
+        store.delete_book(book).unwrap();
+        assert!(store.get_book(book).unwrap().is_none());
+        assert!(store.book_chapters(book).unwrap().is_empty());
     }
 
     fn titles(cards: &[Card]) -> Vec<&str> {

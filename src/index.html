@@ -42,6 +42,10 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v10M8 11l4 4 4-4M5 19h14" /></svg>
           <span>材料</span>
         </button>
+        <button class="nav-item" data-view="book">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h9a3 3 0 013 3v13H8a3 3 0 01-3-3z" /><path d="M17 7h2v13h-2" /><path d="M9 4v6l2-1.5L13 10V4" /></svg>
+          <span>成书</span>
+        </button>
         <button class="nav-item" data-view="settings">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z" /><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-2.9 1.2 2 2 0 11-4 0 1.7 1.7 0 00-2.9-1.2l-.1.1a2 2 0 11-2.8-2.8l.1-.1A1.7 1.7 0 003 15a2 2 0 010-4 1.7 1.7 0 001.2-2.9l-.1-.1a2 2 0 112.8-2.8l.1.1A1.7 1.7 0 0010 4.6a2 2 0 014 0 1.7 1.7 0 002.9 1.2l.1-.1a2 2 0 112.8 2.8l-.1.1A1.7 1.7 0 0021 11a2 2 0 010 4z" /></svg>
           <span>设置</span>
@@ -409,6 +413,22 @@
               <button class="btn btn-primary" type="button" data-drawer-close>完成</button>
             </div>
           </aside>
+        </div>
+      </section>
+
+      <!-- 成书 -->
+      <section class="view" data-view="book">
+        <div class="grid-book">
+          <div class="block book-main">
+            <div class="block-head">
+              <h2 id="bookHead">成书</h2>
+              <span class="block-hint" id="bookHint">选材料或直接给主题，排成目录、逐章写正文</span>
+            </div>
+            <div id="bookPane"></div>
+          </div>
+          <div class="block book-side">
+            <div id="bookSide"></div>
+          </div>
         </div>
       </section>
 

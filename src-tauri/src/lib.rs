@@ -1,6 +1,7 @@
 //! 致知（Zhizhi）命令层：前端通过 invoke 调这些命令。
 
 pub mod autostart;
+pub mod book;
 pub mod graph;
 pub mod ingest;
 pub mod llm;
@@ -503,6 +504,182 @@ fn mark_learned(state: State<'_, AppState>, card_id: i64, learned: bool) -> Resu
 #[tauri::command]
 fn learned_cards(state: State<'_, AppState>, limit: Option<i64>) -> Result<Vec<Card>, String> {
     state.store.lock().unwrap().learned_cards(limit.unwrap_or(-1)).map_err(err_str)
+}
+
+// ── 成书 ─────────────────────────────────────────────────
+
+/// 第一步：排目录。不选材料时按书名/目标上网取料，取到的内容会落成一份材料。
+#[tauri::command]
+async fn book_outline(
+    state: State<'_, AppState>,
+    title: String,
+    goal: String,
+    material_ids: Vec<i64>,
+) -> Result<book::Outline, String> {
+    let title = title.trim().to_string();
+    if title.is_empty() {
+        return Err("先给这本书起个名字".into());
+    }
+    let goal = goal.trim().to_string();
+    let llm = state.llm.read().unwrap().clone();
+    let http = state.http.read().unwrap().clone();
+
+    let (candidates, origin, material_id) = if material_ids.is_empty() {
+        if !llm.ready() {
+            return Err("上网取料要模型整理内容，先在「设置」里填好 API Key".into());
+        }
+        let query = if goal.is_empty() { title.clone() } else { format!("{title} {goal}") };
+        let item = ingest::smart_from_topic(&http, &llm, &query).await.map_err(err_str)?;
+        if item.text.trim().chars().count() < 200 {
+            return Err("取料回来的内容太少，换个书名或补一句学习目标再试".into());
+        }
+        let store = state.store.lock().unwrap();
+        let material_id = book::save_topic(&store, &item, &now_iso(), &today()).map_err(err_str)?;
+        let list = book::candidates(&store, &[material_id]).map_err(err_str)?;
+        let origin = format!("网络取料 · {}（已存为材料《{}》）", item.source, item.title);
+        (list, origin, Some(material_id))
+    } else {
+        let store = state.store.lock().unwrap();
+        (book::candidates(&store, &material_ids).map_err(err_str)?, "已有材料".to_string(), None)
+    };
+
+    if candidates.is_empty() {
+        return Err("没有可编排的知识点：先导入材料，或换个说法重新取料".into());
+    }
+    let chapters = llm.book_outline(&title, &goal, &candidates).await.map_err(err_str)?;
+    Ok(book::Outline { chapters, origin, material_id })
+}
+
+#[tauri::command]
+fn book_create(
+    state: State<'_, AppState>,
+    title: String,
+    goal: String,
+    origin: String,
+    chapters: Vec<llm::OutlineChapter>,
+) -> Result<i64, String> {
+    if chapters.is_empty() {
+        return Err("目录是空的".into());
+    }
+    let rows: Vec<(String, String, Vec<String>)> = chapters
+        .into_iter()
+        .map(|chapter| (chapter.title, chapter.intro, chapter.keys))
+        .collect();
+    state
+        .store
+        .lock()
+        .unwrap()
+        .insert_book(&title, &goal, &origin, &rows, &now_iso())
+        .map_err(err_str)
+}
+
+/// 第二步：写正文。每次调用写 limit 章，前端循环到 done。
+#[tauri::command]
+async fn book_generate_step(
+    state: State<'_, AppState>,
+    book_id: i64,
+    limit: Option<i64>,
+) -> Result<book::Step, String> {
+    let (book, pending, cards) = {
+        let store = state.store.lock().unwrap();
+        let book = store.get_book(book_id).map_err(err_str)?.ok_or("这本书不存在")?;
+        let pending = store.pending_chapters(book_id, limit.unwrap_or(2)).map_err(err_str)?;
+        let cards = if pending.is_empty() { Vec::new() } else { store.list_cards(None).map_err(err_str)? };
+        (book, pending, cards)
+    };
+
+    if pending.is_empty() {
+        state.store.lock().unwrap().set_book_status(book_id, "done").map_err(err_str)?;
+        return Ok(book::Step { written: 0, remaining: 0, done: true, error: None });
+    }
+
+    let llm = state.llm.read().unwrap().clone();
+    let mut written = 0i64;
+    let mut first_error: Option<String> = None;
+    let mut previous_tail = {
+        let store = state.store.lock().unwrap();
+        store
+            .book_chapters(book_id)
+            .map_err(err_str)?
+            .into_iter()
+            .filter(|chapter| !chapter.body.trim().is_empty())
+            .last()
+            .map(|chapter| book::tail(&chapter.body))
+            .unwrap_or_default()
+    };
+
+    for chapter in &pending {
+        let sources = book::sources(&cards, &chapter.keys);
+        if sources.is_empty() {
+            continue;
+        }
+        match llm
+            .write_chapter(&book.title, &chapter.title, &chapter.intro, &sources, &previous_tail)
+            .await
+        {
+            Ok(body) => {
+                state.store.lock().unwrap().fill_chapter(chapter.id, &body).map_err(err_str)?;
+                written += 1;
+                previous_tail = book::tail(&body);
+            }
+            Err(error) => {
+                eprintln!("[成书] 第 {} 章失败：{error}", chapter.seq);
+                if first_error.is_none() {
+                    first_error = Some(error.to_string());
+                }
+            }
+        }
+    }
+
+    let remaining = {
+        let store = state.store.lock().unwrap();
+        store
+            .book_chapters(book_id)
+            .map_err(err_str)?
+            .into_iter()
+            .filter(|chapter| chapter.body.trim().is_empty())
+            .count() as i64
+    };
+    Ok(book::Step { written, remaining, done: false, error: first_error })
+}
+
+#[tauri::command]
+fn book_list(state: State<'_, AppState>) -> Result<Vec<store::Book>, String> {
+    state.store.lock().unwrap().list_books().map_err(err_str)
+}
+
+#[tauri::command]
+fn book_get(state: State<'_, AppState>, book_id: i64) -> Result<book::Detail, String> {
+    let store = state.store.lock().unwrap();
+    let book = store.get_book(book_id).map_err(err_str)?.ok_or("这本书不存在")?;
+    let chapters = store.book_chapters(book_id).map_err(err_str)?;
+    Ok(book::Detail { book, chapters })
+}
+
+#[tauri::command]
+fn book_delete(state: State<'_, AppState>, book_id: i64) -> Result<(), String> {
+    state.store.lock().unwrap().delete_book(book_id).map_err(err_str)
+}
+
+/// 导出一整本 Markdown 到数据目录的 exports 下，返回文件路径。
+#[tauri::command]
+fn book_export(state: State<'_, AppState>, book_id: i64) -> Result<String, String> {
+    let (book, chapters) = {
+        let store = state.store.lock().unwrap();
+        let book = store.get_book(book_id).map_err(err_str)?.ok_or("这本书不存在")?;
+        let chapters = store.book_chapters(book_id).map_err(err_str)?;
+        (book, chapters)
+    };
+    let dir = state.data_dir.join("exports");
+    std::fs::create_dir_all(&dir).map_err(err_str)?;
+    let safe: String = book
+        .title
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .collect();
+    let path = dir.join(format!("{safe}.md"));
+    std::fs::write(&path, book::export_markdown(&book, &chapters)).map_err(err_str)?;
+    Ok(path.display().to_string())
 }
 
 // ── 学习与复习 ───────────────────────────────────────────
@@ -1498,6 +1675,13 @@ pub fn run() {
             rename_material,
             export_material,
             delete_material,
+            book_outline,
+            book_create,
+            book_generate_step,
+            book_list,
+            book_get,
+            book_delete,
+            book_export,
             list_cards,
             mark_learned,
             learned_cards,

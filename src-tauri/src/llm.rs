@@ -61,6 +61,19 @@ answer（参考答案，覆盖全部 keyPoints）。\
 正文已经完整保留给读者，所以不要复述、不要压缩、不要摘抄正文，只给考点本身。\
 只输出 JSON 对象：{\"summary\": \"\", \"keyPoints\": [], \"question\": \"\", \"answer\": \"\"}，不要任何解释。";
 
+const BOOK_OUTLINE_SYSTEM: &str = "你是课程主编。用户要编一本学习用的小书，会给你书名、学习目标，以及一份素材清单（每条带 key、所属章节、标题）。\
+请据此设计全书目录：3-8 章，每章一个清晰的学习主题，按由浅入深排序。\
+输出 JSON 数组，每个元素形如 {\"title\":\"章标题\",\"intro\":\"这一章讲什么、读完能获得什么，60-100 字\",\"keys\":[\"素材 key\", ...]}。\
+硬要求：keys 只能引用清单里出现过的 key；同一条素材只能归到一章；一章至少 2 条素材；不要编造清单之外的内容；只输出 JSON 数组，不要代码块围栏。";
+
+const BOOK_CHAPTER_SYSTEM: &str = "你是教材作者。用户给你一本书的书名、本章标题、本章范围，以及本章可用的素材原文（来自已整理的学习材料）。\
+请写这一章的正文，输出 Markdown：\
+1. 只用素材里写过的事实，不要编造数据、案例或引文，素材没讲的不补；\
+2. 按逻辑排段落，用小标题（###）、列表、表格、代码块组织，让人能顺着读下去；\
+3. 开头一两句话接手本章目标，结尾用 3-5 条要点收束；\
+4. 正文 800-1600 字，不要写「本章将介绍」这类空话，不要重复书名；\
+5. 直接输出正文 Markdown，不要代码块围栏、不要任何解释。";
+
 /// 模型整理出来的材料。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -302,6 +315,94 @@ impl LlmClient {
         Ok(digest)
     }
 
+    /// 成书第一步：从素材清单里排出目录（章 + 每章引用的素材 key）。
+    pub async fn book_outline(
+        &self,
+        title: &str,
+        goal: &str,
+        catalog: &[crate::book::Candidate],
+    ) -> Result<Vec<OutlineChapter>> {
+        let list = catalog
+            .iter()
+            .take(120)
+            .map(|item| {
+                let section = if item.section.trim().is_empty() { "未分类" } else { item.section.trim() };
+                format!("- key={} （{}） {}", item.key, section, item.title)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let user = format!(
+            "书名：{title}\n学习目标：{}\n\n素材清单（共 {} 条）：\n{list}",
+            if goal.trim().is_empty() { "未指定，按书名理解" } else { goal.trim() },
+            catalog.len()
+        );
+        let messages = json!([
+            { "role": "system", "content": BOOK_OUTLINE_SYSTEM },
+            { "role": "user", "content": user },
+        ]);
+        let raw = self.chat(messages, &self.model, 3000, 0.3).await?;
+        let json_text = extract_json(&raw, '[', ']')?;
+        let items: Vec<OutlineChapter> = serde_json::from_str(&json_text)
+            .map_err(|e| anyhow!("目录 JSON 解析失败：{e}"))?;
+
+        // 模型偶尔会漏 key 或把同一条素材塞进两章：这里按素材清单收一遍。
+        let valid: std::collections::HashSet<&str> =
+            catalog.iter().map(|item| item.key.as_str()).collect();
+        let mut used: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let chapters: Vec<OutlineChapter> = items
+            .into_iter()
+            .filter_map(|mut chapter| {
+                chapter.keys.retain(|key| valid.contains(key.as_str()) && used.insert(key.clone()));
+                if chapter.keys.is_empty() || chapter.title.trim().is_empty() {
+                    return None;
+                }
+                chapter.title = chapter.title.trim().to_string();
+                chapter.intro = chapter.intro.trim().to_string();
+                Some(chapter)
+            })
+            .take(12)
+            .collect();
+        if chapters.is_empty() {
+            return Err(anyhow!("模型没排出可用目录：换个书名，或换一批素材再试"));
+        }
+        Ok(chapters)
+    }
+
+    /// 成书第二步：写一章正文。素材只放本章引用的那几条，避免一次性塞爆上下文。
+    pub async fn write_chapter(
+        &self,
+        book_title: &str,
+        chapter_title: &str,
+        intro: &str,
+        sources: &[(String, String)],
+        previous_tail: &str,
+    ) -> Result<String> {
+        let body = sources
+            .iter()
+            .map(|(title, content)| format!("【素材：{title}】\n{}", truncate(content, 3500)))
+            .collect::<Vec<_>>()
+            .join("\n\n---\n\n");
+        let mut user = format!(
+            "书名：{book_title}\n本章标题：{chapter_title}\n本章范围：{intro}\n\n素材原文：\n{body}"
+        );
+        if !previous_tail.trim().is_empty() {
+            user.push_str(&format!(
+                "\n\n上一章结尾（只用来衔接语气，不要重复它的内容）：\n{}",
+                truncate(previous_tail, 600)
+            ));
+        }
+        let messages = json!([
+            { "role": "system", "content": BOOK_CHAPTER_SYSTEM },
+            { "role": "user", "content": user },
+        ]);
+        let text = self.chat(messages, &self.model, 6000, 0.4).await?;
+        let text = text.trim().to_string();
+        if text.chars().count() < 120 {
+            return Err(anyhow!("这一章只写了 {} 字，太短；稍后在书里点「继续生成」重试", text.chars().count()));
+        }
+        Ok(text)
+    }
+
     /// 给一个知识点出题：一次调用出一组题（用户指定题型与分值）。
     pub async fn make_questions(
         &self,
@@ -403,6 +504,18 @@ pub fn kind_label(kind: &str) -> &'static str {
         "case" => "案例题",
         _ => "题目",
     }
+}
+
+/// 成书目录里的章：标题、导语、引用的素材 key。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutlineChapter {
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub intro: String,
+    #[serde(default)]
+    pub keys: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
