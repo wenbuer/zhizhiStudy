@@ -1958,14 +1958,15 @@ function renderShelf() {
     if (m.cardCount) parts.push(m.cardCount + ' 个单元');
     if (m.pendingCount) parts.push('待补 ' + m.pendingCount);
     parts.push(escapeHtml(String(m.createdAt).slice(0, 10)));
-    return `<div class="row${picked ? ' is-picked' : ''}" data-item="${m.id}"` +
-      (picking && !m.chapters ? ` data-scope="${m.id}"` : '') +
-      (m.bookId ? ` data-read-book="${m.bookId}"` : '') + '>' +
-      '<div class="row-main">' +
+    return `<div class="row${picked ? ' is-picked' : ''}" data-item="${m.id}" data-open="${m.id}">` +
+      '<div class="row-main"><div class="row-top">' +
+      (picking
+        ? `<input type="checkbox" class="row-pick" data-scope="${m.id}" ${picked ? 'checked' : ''} />`
+        : '') +
       (state.renaming === m.id
         ? `<input class="inline-input" data-rename="${m.id}" value="${escapeHtml(m.title)}" />`
         : `<div class="row-title">${escapeHtml(m.title)}</div>`) +
-      `<div class="row-sub">${parts.join(' · ')}</div></div>` +
+      `</div><div class="row-sub">${parts.join(' · ')}</div></div>` +
       (m.pendingCount ? `<button class="btn btn-slim" data-act="polish" data-id="${m.id}">补考点</button>` : '') +
       `<button class="btn btn-slim" data-act="rename" data-id="${m.id}">重命名</button>` +
       (m.bookId
@@ -1976,7 +1977,7 @@ function renderShelf() {
   }).join('');
 
   el('shelfList').innerHTML = busy + rows +
-    (items.length ? '' : '<div class="empty">书架还是空的：切到「本地导入」加材料，或在上边填个书名上网搜。</div>');
+    (items.length ? '' : '<div class="empty">书架还是空的</div>');
 
   if (state.renaming) {
     const input = document.querySelector('[data-rename]');
@@ -2019,6 +2020,16 @@ async function generateBook(button) {
     await loadShelf();
     toast('生成完成', 'ok');
   }).catch(() => {});
+}
+
+async function openInLearn(materialId) {
+  const material = (state.materials || []).find((item) => item.id === materialId);
+  if (material && material.bookId) { await openBookInLearn(material.bookId); return; }
+  state.learnBook = null;
+  state.learnMaterial = materialId;
+  state.learnedOnly = false;
+  if (state.view === 'learn') renderLearn();
+  else switchView('learn');
 }
 
 async function openBookInLearn(bookId) {
@@ -2091,22 +2102,20 @@ function bind() {
     if (event.target.id === 'bookTitle') state.book.form.title = event.target.value;
     if (event.target.id === 'bookGoal') state.book.form.goal = event.target.value;
   });
+  bookView.addEventListener('change', (event) => {
+    const box = event.target.closest('[data-scope]');
+    if (!box) return;
+    const id = Number(box.dataset.scope);
+    const kept = state.book.form.materialIds.filter((item) => item !== id);
+    if (box.checked) kept.push(id);
+    state.book.form.materialIds = kept;
+    renderShelf();
+  });
   bookView.addEventListener('click', (event) => {
-    const rowBook = event.target.closest('[data-read-book]');
-    if (rowBook && !event.target.closest('[data-act]') && !event.target.closest('[data-book]')
-      && !event.target.closest('[data-scope]')) {
-      openBookInLearn(Number(rowBook.dataset.readBook)).catch(() => {});
-      return;
-    }
-
-    const scopeRow = event.target.closest('[data-scope]');
-    if (scopeRow && !event.target.closest('[data-act]') && !event.target.closest('input')) {
-      const id = Number(scopeRow.dataset.scope);
-      const kept = state.book.form.materialIds.filter((item) => item !== id);
-      if (!state.book.form.materialIds.includes(id)) kept.push(id);
-      state.book.form.materialIds = kept;
-      renderShelf();
-      paintBook();
+    const openRow = event.target.closest('[data-open]');
+    if (openRow && !event.target.closest('[data-act]') && !event.target.closest('[data-book]')
+      && !event.target.closest('input')) {
+      openInLearn(Number(openRow.dataset.open)).catch(() => {});
       return;
     }
 

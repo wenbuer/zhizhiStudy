@@ -1460,9 +1460,11 @@ body.is-reading .study-card > * {
 
 .shelf-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 
-.shelf-col .row { flex-wrap: wrap; }
+.shelf-col .row { flex-wrap: wrap; align-items: center; }
 .shelf-col .row-main { flex: 1 1 100%; }
+.row-top { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .shelf-col .row .btn { margin-top: 2px; }
+.row-pick { flex: none; margin: 0 2px 0 0; accent-color: var(--accent); }
 
 
 
