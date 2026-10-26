@@ -18,7 +18,7 @@
       </div>
 
       <nav class="nav" id="nav">
-        <button class="nav-item is-active" data-view="today">
+        <button class="nav-item" data-view="today">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h7" /></svg>
           <span>开始</span>
         </button>
@@ -26,7 +26,7 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5M4 19h16M8 15l3-4 3 3 4-6" /></svg>
           <span>看板</span>
         </button>
-        <button class="nav-item" data-view="learn">
+        <button class="nav-item is-active" data-view="learn">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h7v14H4zM13 5h7v14h-7z" /></svg>
           <span>学习</span>
         </button>
@@ -68,7 +68,7 @@
       </header>
 
       <!-- 今日 -->
-      <section class="view is-active" data-view="today">
+      <section class="view" data-view="today">
         <div class="today-scroll">
           <div class="today-top">
             <div class="block" id="todayFocus"></div>
@@ -160,17 +160,9 @@
       </section>
 
       <!-- 学习 -->
-      <section class="view" data-view="learn">
+      <section class="view is-active" data-view="learn">
         <div class="study-drawer">
           <div class="study-tools">
-            <label class="tool-field">
-              <span class="tool-label">素材库</span>
-              <span class="select-wrap">
-                <svg class="select-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h7v14H4zM13 5h7v14h-7z" /></svg>
-                <select id="learnMaterial" title="切换素材库"></select>
-                <svg class="select-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
-              </span>
-            </label>
             <label class="tool-field tool-grow">
               <span class="tool-label">搜索</span>
               <span class="search-wrap">
@@ -184,7 +176,12 @@
         </div>
         <div class="grid-study">
           <aside class="study-side">
-            <div class="block-head"><h2>学习单元</h2></div>
+            <div class="block-head">
+              <span class="select-wrap shelf-switch">
+                <select id="learnShelf" title="切换书架内容"></select>
+                <svg class="select-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+              </span>
+            </div>
             <div class="list list-compact" id="learnQueue"></div>
           </aside>
           <div class="block study-card" id="learnCard"></div>

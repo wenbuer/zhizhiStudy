@@ -535,6 +535,9 @@ input::placeholder, textarea::placeholder { color: var(--fg-dim); }
   padding-right: 6px;
 }
 
+.shelf-switch { width: 100%; }
+.shelf-switch > select { width: 100%; }
+
 .study-card {
   min-height: 0;
   overflow-y: auto;

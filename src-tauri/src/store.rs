@@ -755,8 +755,12 @@ impl Store {
 
     /// 错题：作答过但没拿满分的题（练习和测验都算），按出卷时间倒序。
     pub fn wrong_items(&self, limit: i64) -> Result<Vec<WrongItem>> {
-        let sql = "SELECT i.*, e.title AS exam_title, e.kind AS exam_kind, e.created_at AS exam_created
-                   FROM exam_items i JOIN exams e ON e.id = i.exam_id
+        let sql = "SELECT i.*, e.title AS exam_title, e.kind AS exam_kind, e.created_at AS exam_created,
+                          COALESCE(m.title, '') AS material_title
+                   FROM exam_items i
+                   JOIN exams e ON e.id = i.exam_id
+                   LEFT JOIN cards c ON c.id = i.card_id
+                   LEFT JOIN materials m ON m.id = c.material_id
                    WHERE TRIM(i.user_answer) <> '' AND i.score IS NOT NULL AND i.score < i.points - 0.001
                    ORDER BY e.id DESC, i.seq ASC LIMIT ?1";
         let mut stmt = self.conn.prepare(sql)?;
@@ -764,6 +768,7 @@ impl Store {
             let item = Self::map_exam_item(r)?;
             Ok(WrongItem {
                 exam_title: r.get("exam_title").unwrap_or_default(),
+                material_title: r.get("material_title").unwrap_or_default(),
                 exam_kind: r.get("exam_kind").unwrap_or_else(|_| "quiz".to_string()),
                 created_at: r.get("exam_created").unwrap_or_default(),
                 item,
@@ -1029,6 +1034,8 @@ pub struct ChapterProgress {
 #[serde(rename_all = "camelCase")]
 pub struct WrongItem {
     pub exam_title: String,
+    /// 题目所属材料的标题（书名）
+    pub material_title: String,
     /// quiz = 测验页出的卷子，practice = 练习页的随机练习
     pub exam_kind: String,
     pub created_at: String,

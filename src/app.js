@@ -742,6 +742,20 @@ function learnedFoldHtml(learned, activeId) {
     '<span>' + total + '</span></div>' + body + '</div>';
 }
 
+function renderShelfSelect(current) {
+  const select = el('learnShelf');
+  if (!select) return;
+  const html = ['<option value="">书架</option>']
+    .concat((state.materials || []).map((m) =>
+      '<option value="' + m.id + '">' + escapeHtml(m.title) + '</option>'))
+    .join('');
+  if (select.dataset.rendered !== html) {
+    select.innerHTML = html;
+    select.dataset.rendered = html;
+  }
+  select.value = current ? String(current) : '';
+}
+
 function renderLearn() {
   hideSelectActions();
   closeTransPop();
@@ -749,17 +763,7 @@ function renderLearn() {
   if (state.learnBook) { renderLearnBook(); return; }
 
   // 素材库切换器
-  const select = el('learnMaterial');
-  if (select) {
-    const html = ['<option value="">全部素材库</option>'].concat(
-      (state.materials || []).filter((m) => m.cardCount > 0).map((m) =>
-        '<option value="' + m.id + '">' + escapeHtml(m.title) + '</option>')).join('');
-    if (select.dataset.rendered !== html) {
-      select.innerHTML = html;
-      select.dataset.rendered = html;
-    }
-    select.value = state.learnMaterial ? String(state.learnMaterial) : '';
-  }
+  renderShelfSelect(state.learnMaterial);
 
   const filter = el('learnFilter');
   if (filter) {
@@ -1234,19 +1238,15 @@ function renderWrongPane() {
 function wrongItemHTML(entry) {
   const item = entry.item;
   const score = item.score == null ? 0 : item.score;
-  const missed = (item.missed || []).map((m) => '<li>' + escapeHtml(m) + '</li>').join('');
   return '<div class="wrong-item">' +
     '<div class="wrong-head">' +
     '<span class="quiz-kind">' + escapeHtml(kindLabel(item.kind)) + '</span>' +
     '<span class="wrong-title">' + escapeHtml(item.stem || '（题干缺失）') + '</span>' +
     '<span class="wrong-score">' + score + ' / ' + item.points + '</span></div>' +
-    '<div class="wrong-meta">' + escapeHtml(entry.examTitle) + ' · ' +
-    (entry.examKind === 'practice' ? '练习' : '考试') + ' · ' +
-    escapeHtml((entry.createdAt || '').slice(0, 10)) + '</div>' +
-    (item.userAnswer ? '<div class="wrong-line"><b>你的答案</b>' + escapeHtml(item.userAnswer) + '</div>' : '') +
-    '<div class="wrong-line"><b>参考答案</b>' + escapeHtml(item.answer || '（暂无）') + '</div>' +
-    (item.explain ? '<div class="wrong-line"><b>解析</b>' + escapeHtml(item.explain) + '</div>' : '') +
-    (missed ? '<div class="wrong-line"><b>遗漏</b><ul class="grade-list">' + missed + '</ul></div>' : '') +
+    '<div class="wrong-meta">' + [entry.materialTitle, item.cardTitle, (entry.createdAt || '').slice(0, 10)]
+      .filter((part) => part && String(part).trim())
+      .map((part) => escapeHtml(String(part)))
+      .join(' · ') + '</div>' +
     '</div>';
 }
 
@@ -2034,7 +2034,13 @@ async function openInLearn(materialId) {
 
 async function openBookInLearn(bookId) {
   const detail = await call('book_get', { bookId });
-  state.learnBook = { bookId, title: detail.book.title, chapters: detail.chapters, index: 0 };
+  state.learnBook = {
+    bookId,
+    materialId: detail.book.materialId,
+    title: detail.book.title,
+    chapters: detail.chapters,
+    index: 0,
+  };
   state.learnedOnly = false;
   switchView('learn');
 }
@@ -2042,6 +2048,7 @@ async function openBookInLearn(bookId) {
 function renderLearnBook() {
   const book = state.learnBook;
   const chapters = book.chapters || [];
+  renderShelfSelect(book.materialId);
   if (!chapters.length) {
     el('learnQueue').innerHTML = '<div class="empty">这本书还没有章节</div>';
     el('learnCard').innerHTML = '';
@@ -2381,9 +2388,14 @@ function bind() {
     }
   });
 
-  el('learnMaterial').addEventListener('change', (event) => {
+  el('learnShelf').addEventListener('change', (event) => {
+    const id = Number(event.target.value) || null;
+    const material = id ? (state.materials || []).find((item) => item.id === id) : null;
     state.learnBook = null;
-    state.learnMaterial = Number(event.target.value) || null;
+    state.learnMaterial = id;
+    if (material && material.bookId) { openBookInLearn(material.bookId).catch(() => {}); return; }
+    state.learnedOnly = false;
+    renderLearn();
     state.learnIndex = 0;
     renderLearn();
   });
