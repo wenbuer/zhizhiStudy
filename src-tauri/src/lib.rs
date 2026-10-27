@@ -258,6 +258,39 @@ async fn download_update(
     })
 }
 
+/// 用下载好的 exe 替换当前程序：起一个守护脚本，等本进程退出后覆盖再重启。
+#[tauri::command]
+fn apply_update(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let src = std::path::PathBuf::from(path.trim());
+    if !src.is_file() {
+        return Err("下载的文件已经不在了".into());
+    }
+    let size = std::fs::metadata(&src).map_err(err_str)?.len();
+    if size < 1_000_000 {
+        return Err("这个文件不像安装包，先别替换".into());
+    }
+    let current = std::env::current_exe().map_err(err_str)?;
+    let temp = std::env::temp_dir();
+    let staged = temp.join("zhizhi-update.exe");
+    std::fs::copy(&src, &staged).map_err(err_str)?;
+    let script = temp.join("zhizhi-update.bat");
+    let pid = std::process::id();
+    let body = format!(
+        "@echo off\r\nsetlocal\r\n:wait\r\ntasklist /FI \"PID eq {pid}\" 2>nul | find \"{pid}\" >nul\r\nif not errorlevel 1 (\r\n  timeout /t 1 /nobreak >nul\r\n  goto wait\r\n)\r\ncopy /Y \"{new}\" \"{cur}\" >nul\r\nstart \"\" \"{cur}\"\r\ndel \"%~f0\"\r\n",
+        pid = pid,
+        new = staged.display(),
+        cur = current.display()
+    );
+    std::fs::write(&script, body).map_err(err_str)?;
+    let target = script.to_string_lossy().to_string();
+    std::process::Command::new("cmd")
+        .args(["/C", "start", "/min", "", &target])
+        .spawn()
+        .map_err(err_str)?;
+    app.exit(0);
+    Ok(())
+}
+
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
     let url = url.trim().to_string();
@@ -1824,6 +1857,7 @@ pub fn run() {
             check_update,
             skip_update,
             download_update,
+            apply_update,
             open_url,
             test_llm,
             test_fetch,

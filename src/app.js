@@ -2172,8 +2172,9 @@ async function downloadThisUpdate(button) {
   await withBusy(button, '下载中', async () => {
     const out = await call('download_update', { url: info.assetUrl, version: info.latest });
     closeUpdate();
-    toast('已下载 ' + (out.bytes / 1048576).toFixed(1) + ' MB 到下载文件夹', 'ok');
-    await call('reveal_path', { path: out.path }).catch(() => {});
+    toast('已下载 ' + (out.bytes / 1048576).toFixed(1) + ' MB，正在替换并重启…', 'ok');
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await call('apply_update', { path: out.path }).catch(() => {});
   }).catch(() => {});
 }
 
