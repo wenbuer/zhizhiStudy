@@ -106,6 +106,8 @@ struct UpdateInfo {
     current: String,
     latest: String,
     url: String,
+    /// release 里那个 exe 的直接下载地址；没有附件时为空
+    asset_url: String,
     notes: String,
     published_at: String,
     has_update: bool,
@@ -162,7 +164,22 @@ async fn check_update(state: State<'_, AppState>) -> Result<UpdateInfo, String> 
     let tag = json["tag_name"].as_str().unwrap_or("").trim().to_string();
     let latest = tag.trim_start_matches('v').to_string();
     let skip = state.settings.read().unwrap().skip_version.clone();
+    let asset_url = json["assets"]
+        .as_array()
+        .and_then(|assets| {
+            assets.iter().find_map(|asset| {
+                let name = asset["name"].as_str().unwrap_or("");
+                if name.to_lowercase().ends_with(".exe") {
+                    asset["browser_download_url"].as_str()
+                } else {
+                    None
+                }
+            })
+        })
+        .unwrap_or("")
+        .to_string();
     Ok(UpdateInfo {
+        asset_url,
         url: json["html_url"].as_str().unwrap_or("").to_string(),
         notes: json["body"].as_str().unwrap_or("").to_string(),
         published_at: json["published_at"].as_str().unwrap_or("").to_string(),
@@ -178,6 +195,67 @@ fn skip_update(state: State<'_, AppState>, version: String) -> Result<(), String
     let mut settings = state.settings.write().unwrap();
     settings.skip_version = version.trim().to_string();
     settings.save(&state.settings_path).map_err(err_str)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DownloadOut {
+    path: String,
+    bytes: i64,
+}
+
+fn download_dir(state: &AppState) -> std::path::PathBuf {
+    match std::env::var("USERPROFILE") {
+        Ok(home) if !home.trim().is_empty() => {
+            let dir = std::path::Path::new(home.trim()).join("Downloads");
+            if dir.is_dir() {
+                return dir;
+            }
+            state.data_dir.join("updates")
+        }
+        _ => state.data_dir.join("updates"),
+    }
+}
+
+#[tauri::command]
+async fn download_update(
+    state: State<'_, AppState>,
+    url: String,
+    version: String,
+) -> Result<DownloadOut, String> {
+    let url = url.trim().to_string();
+    if !url.starts_with("https://") {
+        return Err("只允许 https 下载".into());
+    }
+    let http = state.http.read().unwrap().clone();
+    let resp = http
+        .get(&url)
+        .header("User-Agent", "Zhizhi")
+        .timeout(std::time::Duration::from_secs(180))
+        .send()
+        .await
+        .map_err(|e| format!("下载失败：{e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("下载失败：HTTP {}", resp.status().as_u16()));
+    }
+    let bytes = resp.bytes().await.map_err(err_str)?;
+    if bytes.len() < 1024 * 1024 {
+        return Err(format!("下载到的文件只有 {} KB，不像安装包", bytes.len() / 1024));
+    }
+    let dir = download_dir(&state);
+    std::fs::create_dir_all(&dir).map_err(err_str)?;
+    let tag = version.trim().trim_start_matches('v');
+    let name = if tag.is_empty() {
+        "Zhizhi-new.exe".to_string()
+    } else {
+        format!("Zhizhi-{tag}.exe")
+    };
+    let path = dir.join(name);
+    std::fs::write(&path, &bytes).map_err(err_str)?;
+    Ok(DownloadOut {
+        path: path.display().to_string(),
+        bytes: bytes.len() as i64,
+    })
 }
 
 #[tauri::command]
@@ -1745,6 +1823,7 @@ pub fn run() {
             detect_proxy,
             check_update,
             skip_update,
+            download_update,
             open_url,
             test_llm,
             test_fetch,

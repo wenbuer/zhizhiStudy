@@ -2156,15 +2156,25 @@ async function skipThisVersion() {
   }
 }
 
-async function openUpdatePage() {
+async function downloadThisUpdate(button) {
   const info = state.update;
-  closeUpdate();
-  if (!info || !info.url) return;
-  try {
-    await call('open_url', { url: info.url });
-  } catch (error) {
-    toast('打不开浏览器：' + String(error.message || error), 'bad');
+  if (!info) return;
+  if (!info.assetUrl) {
+    if (!info.url) return;
+    closeUpdate();
+    try {
+      await call('open_url', { url: info.url });
+    } catch (error) {
+      toast('打不开浏览器：' + String(error.message || error), 'bad');
+    }
+    return;
   }
+  await withBusy(button, '下载中', async () => {
+    const out = await call('download_update', { url: info.assetUrl, version: info.latest });
+    closeUpdate();
+    toast('已下载 ' + (out.bytes / 1048576).toFixed(1) + ' MB 到下载文件夹', 'ok');
+    await call('reveal_path', { path: out.path }).catch(() => {});
+  }).catch(() => {});
 }
 
 /* ── 事件绑定 ─────────────────────────────── */
@@ -2481,7 +2491,7 @@ function bind() {
     withBusy(event.currentTarget, '检查中', () => runUpdateCheck(true)));
 
   el('updateSkip').addEventListener('click', skipThisVersion);
-  el('updateGo').addEventListener('click', openUpdatePage);
+  el('updateGo').addEventListener('click', (event) => downloadThisUpdate(event.currentTarget));
   el('updateClose').addEventListener('click', closeUpdate);
   el('updateBackdrop').addEventListener('click', closeUpdate);
 
