@@ -35,6 +35,10 @@ pub struct Settings {
     pub proxy_mode: String,
     pub proxy_url: String,
     pub no_proxy: String,
+    /// 打开后查一次新版本，有更新就弹小窗
+    pub auto_update: bool,
+    /// 用户点过「跳过这个版本」的版本号，不再提示
+    pub skip_version: String,
 }
 
 impl Default for Settings {
@@ -52,6 +56,8 @@ impl Default for Settings {
                 .or_else(|_| std::env::var("HTTP_PROXY"))
                 .unwrap_or_default(),
             no_proxy: std::env::var("NO_PROXY").unwrap_or_default(),
+            auto_update: true,
+            skip_version: String::new(),
         }
     }
 }

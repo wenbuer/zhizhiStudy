@@ -59,6 +59,7 @@ const state = {
   },
   learnBook: null,
   learnPendingId: null,
+  update: null,
   wrongItems: [],
   wrongOpen: null,
 };
@@ -1801,6 +1802,8 @@ async function loadSettings() {
   setSeg('#notifySeg', 'notify', s.notify !== false);
   setSeg('#translateSeg', 'translate', s.translate === true);
   setSeg('#qaSeg', 'qa', s.qa !== false);
+  setSeg('#updateSeg', 'autoUpdate', s.autoUpdate !== false);
+  el('updateCurrent').textContent = 'v' + ((state.info && state.info.version) || '');
   refreshSettingValues();
   await loadAutostart();
 }
@@ -1881,6 +1884,8 @@ function collectSettings() {
     proxyMode: currentProxyMode(),
     proxyUrl: el('sProxyUrl').value.trim(),
     noProxy: el('sNoProxy').value.trim(),
+    autoUpdate: !(state.settings && state.settings.autoUpdate === false),
+    skipVersion: (state.settings && state.settings.skipVersion) || '',
   };
 }
 
@@ -2108,6 +2113,57 @@ async function exportBook(bookId) {
   const path = await call('book_export', { bookId });
   toast('已导出：' + path, 'ok');
   await call('reveal_path', { path }).catch(() => {});
+}
+
+/* ── 更新检查 ─────────────────────────────── */
+
+function updateCard(info) {
+  state.update = info;
+  el('updateVersion').textContent = 'v' + info.latest;
+  el('updateNotes').textContent = (info.notes || '').trim() || '这个版本没有写更新说明。';
+  el('updatePop').hidden = false;
+}
+
+function closeUpdate() {
+  el('updatePop').hidden = true;
+}
+
+async function runUpdateCheck(manual) {
+  try {
+    const info = await call('check_update');
+    if (!info.hasUpdate) {
+      if (manual) toast('已经是最新版本 v' + info.current, 'ok');
+      return;
+    }
+    if (!manual && info.skipped) return;
+    updateCard(info);
+  } catch (error) {
+    if (manual) toast('检查更新失败：' + String(error.message || error), 'bad');
+  }
+}
+
+async function skipThisVersion() {
+  const info = state.update;
+  closeUpdate();
+  if (!info) return;
+  try {
+    await call('skip_update', { version: info.latest });
+    state.settings = Object.assign({}, state.settings, { skipVersion: info.latest });
+    toast('已跳过 v' + info.latest + '，等下一个版本再提醒', 'ok');
+  } catch (error) {
+    toast('记不住这次跳过：' + String(error.message || error), 'bad');
+  }
+}
+
+async function openUpdatePage() {
+  const info = state.update;
+  closeUpdate();
+  if (!info || !info.url) return;
+  try {
+    await call('open_url', { url: info.url });
+  } catch (error) {
+    toast('打不开浏览器：' + String(error.message || error), 'bad');
+  }
 }
 
 /* ── 事件绑定 ─────────────────────────────── */
@@ -2410,6 +2466,24 @@ function bind() {
     drawWrongPane();
   });
 
+  el('updateSeg').addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-update]');
+    if (!button) return;
+    const on = button.dataset.update === 'on';
+    state.settings = Object.assign({}, state.settings, { autoUpdate: on });
+    setSeg('#updateSeg', 'autoUpdate', on);
+    await saveSettings(true).catch(() => {});
+    toast(on ? '已开启自动检查更新' : '已关闭自动检查更新', 'ok');
+  });
+
+  el('checkUpdateBtn').addEventListener('click', (event) =>
+    withBusy(event.currentTarget, '检查中', () => runUpdateCheck(true)));
+
+  el('updateSkip').addEventListener('click', skipThisVersion);
+  el('updateGo').addEventListener('click', openUpdatePage);
+  el('updateClose').addEventListener('click', closeUpdate);
+  el('updateBackdrop').addEventListener('click', closeUpdate);
+
   el('learnFilter').addEventListener('click', () => {
     state.learnedOnly = !state.learnedOnly;
     state.learnIndex = 0;
@@ -2614,6 +2688,8 @@ function bind() {
 }
 
 bind();
+
+setTimeout(() => { runUpdateCheck(false).catch(() => {}); }, 2500);
 
 refresh().catch((error) => {
   el('todayFocus').innerHTML =

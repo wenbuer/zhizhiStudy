@@ -1128,6 +1128,46 @@ body.is-reading .study-card > * {
 /* 右侧抽屉 */
 .settings-drawer { position: fixed; inset: 0; z-index: 30; }
 .drawer-backdrop { position: absolute; inset: 0; background: rgba(16, 24, 40, 0.28); }
+
+.update-pop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.update-card {
+  position: relative;
+  width: min(560px, calc(100vw - 48px));
+  max-height: min(70vh, 620px);
+  display: flex;
+  flex-direction: column;
+  padding: 18px 20px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+}
+
+.update-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.update-head h3 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+.update-head b { color: var(--accent); font-family: var(--font-mono); font-weight: 600; }
+
+.update-notes {
+  flex: 1;
+  min-height: 64px;
+  margin: 12px 0 14px;
+  overflow-y: auto;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--fg-muted);
+  white-space: pre-wrap;
+}
+
+.update-actions { display: flex; align-items: center; gap: 10px; }
+.update-actions .spacer { flex: 1; }
 .drawer-panel {
   position: absolute;
   top: 0;

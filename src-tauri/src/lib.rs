@@ -100,6 +100,99 @@ fn save_settings(state: State<'_, AppState>, settings: Settings) -> Result<AppIn
     Ok(app_info_of(&state))
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateInfo {
+    current: String,
+    latest: String,
+    url: String,
+    notes: String,
+    published_at: String,
+    has_update: bool,
+    skipped: bool,
+}
+
+fn newer_version(latest: &str, current: &str) -> bool {
+    let parse = |text: &str| -> Vec<u64> {
+        text.trim_start_matches('v')
+            .split('.')
+            .map(|part| part.parse::<u64>().unwrap_or(0))
+            .collect()
+    };
+    let a = parse(latest);
+    let b = parse(current);
+    if a.is_empty() || a.iter().all(|n| *n == 0) {
+        return false;
+    }
+    a > b
+}
+
+#[cfg(test)]
+mod update_tests {
+    use super::newer_version;
+
+    #[test]
+    fn compares_versions_numerically() {
+        assert!(newer_version("1.2.0", "1.1.0"));
+        assert!(newer_version("1.10.0", "1.9.9"));
+        assert!(newer_version("v1.1.1", "1.1.0"));
+        assert!(!newer_version("1.1.0", "1.1.0"));
+        assert!(!newer_version("1.0.9", "1.1.0"));
+        assert!(!newer_version("", "1.1.0"));
+        assert!(!newer_version("abc", "1.1.0"));
+    }
+}
+
+#[tauri::command]
+async fn check_update(state: State<'_, AppState>) -> Result<UpdateInfo, String> {
+    let http = state.http.read().unwrap().clone();
+    let current = env!("CARGO_PKG_VERSION").to_string();
+    let resp = http
+        .get("https://api.github.com/repos/wenbuer/zhizhiStudy/releases/latest")
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "Zhizhi")
+        .timeout(std::time::Duration::from_secs(20))
+        .send()
+        .await
+        .map_err(|e| format!("连不上 GitHub：{e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("GitHub 返回 {}", resp.status().as_u16()));
+    }
+    let json: serde_json::Value = resp.json().await.map_err(err_str)?;
+    let tag = json["tag_name"].as_str().unwrap_or("").trim().to_string();
+    let latest = tag.trim_start_matches('v').to_string();
+    let skip = state.settings.read().unwrap().skip_version.clone();
+    Ok(UpdateInfo {
+        url: json["html_url"].as_str().unwrap_or("").to_string(),
+        notes: json["body"].as_str().unwrap_or("").to_string(),
+        published_at: json["published_at"].as_str().unwrap_or("").to_string(),
+        has_update: newer_version(&latest, &current),
+        skipped: !latest.is_empty() && latest == skip,
+        latest: if latest.is_empty() { current.clone() } else { latest },
+        current,
+    })
+}
+
+#[tauri::command]
+fn skip_update(state: State<'_, AppState>, version: String) -> Result<(), String> {
+    let mut settings = state.settings.write().unwrap();
+    settings.skip_version = version.trim().to_string();
+    settings.save(&state.settings_path).map_err(err_str)
+}
+
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    let url = url.trim().to_string();
+    if !url.starts_with("https://github.com/") {
+        return Err("只允许打开 GitHub 链接".into());
+    }
+    std::process::Command::new("cmd")
+        .args(["/C", "start", "", &url])
+        .spawn()
+        .map_err(err_str)?;
+    Ok(())
+}
+
 /// 检测代理：环境变量、Windows 系统代理、本地常见端口。
 #[tauri::command]
 async fn detect_proxy(state: State<'_, AppState>) -> Result<ProxyInfo, String> {
@@ -1650,6 +1743,9 @@ pub fn run() {
             get_settings,
             save_settings,
             detect_proxy,
+            check_update,
+            skip_update,
+            open_url,
             test_llm,
             test_fetch,
             ingest_query,
