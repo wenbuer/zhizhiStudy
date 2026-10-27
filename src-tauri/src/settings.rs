@@ -56,7 +56,7 @@ impl Default for Settings {
                 .or_else(|_| std::env::var("HTTP_PROXY"))
                 .unwrap_or_default(),
             no_proxy: std::env::var("NO_PROXY").unwrap_or_default(),
-            auto_update: true,
+            auto_update: false,
             skip_version: String::new(),
         }
     }

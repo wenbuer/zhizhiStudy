@@ -1802,7 +1802,7 @@ async function loadSettings() {
   setSeg('#notifySeg', 'notify', s.notify !== false);
   setSeg('#translateSeg', 'translate', s.translate === true);
   setSeg('#qaSeg', 'qa', s.qa !== false);
-  setSeg('#updateSeg', 'autoUpdate', s.autoUpdate !== false);
+  setSeg('#updateSeg', 'autoUpdate', s.autoUpdate === true);
   el('updateCurrent').textContent = 'v' + ((state.info && state.info.version) || '');
   refreshSettingValues();
   await loadAutostart();
@@ -1884,7 +1884,7 @@ function collectSettings() {
     proxyMode: currentProxyMode(),
     proxyUrl: el('sProxyUrl').value.trim(),
     noProxy: el('sNoProxy').value.trim(),
-    autoUpdate: !(state.settings && state.settings.autoUpdate === false),
+    autoUpdate: !!(state.settings && state.settings.autoUpdate),
     skipVersion: (state.settings && state.settings.skipVersion) || '',
   };
 }
