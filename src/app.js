@@ -2120,7 +2120,8 @@ async function exportBook(bookId) {
 function updateCard(info) {
   state.update = info;
   el('updateVersion').textContent = 'v' + info.latest;
-  el('updateNotes').textContent = (info.notes || '').trim() || '这个版本没有写更新说明。';
+  const notes = (info.notes || '').trim();
+  el('updateNotes').innerHTML = notes ? renderMarkdown(notes) : '<p>这个版本没有写更新说明。</p>';
   el('updatePop').hidden = false;
 }
 
@@ -2713,3 +2714,4 @@ async function handleFiles(files) {
     toast('导入失败：' + String(error), 'bad');
   }
 }
+
