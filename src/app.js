@@ -1840,8 +1840,13 @@ function closeSettingsDrawer() {
 
 /* 二选一的开关：把 data-* 值和当前状态对上 */
 function setSeg(selector, key, on) {
+  const dashed = key.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase());
   document.querySelectorAll(selector + ' .seg-item').forEach((button) => {
-    button.classList.toggle('is-active', (button.dataset[key] === 'on') === !!on);
+    // 属性名写 data-auto-update 还是 data-autoUpdate 都能对上，避免两种写法各自失效
+    const value = button.dataset[key] !== undefined
+      ? button.dataset[key]
+      : button.dataset[dashed];
+    button.classList.toggle('is-active', (value === 'on') === !!on);
   });
 }
 
@@ -2479,9 +2484,9 @@ function bind() {
   });
 
   el('updateSeg').addEventListener('click', async (event) => {
-    const button = event.target.closest('[data-update]');
+    const button = event.target.closest('[data-auto-update]');
     if (!button) return;
-    const on = button.dataset.update === 'on';
+    const on = button.dataset.autoUpdate === 'on';
     state.settings = Object.assign({}, state.settings, { autoUpdate: on });
     setSeg('#updateSeg', 'autoUpdate', on);
     await saveSettings(true).catch(() => {});
