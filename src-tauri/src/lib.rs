@@ -1810,6 +1810,14 @@ async fn submit_exam(state: State<'_, AppState>, exam_id: i64) -> Result<ExamPap
 
 pub fn run() {
     tauri::Builder::default()
+        // 必须第一个注册：第二个实例起来直接被拦下，并把已有窗口叫到前面
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let data_dir = match std::env::var("STUDYFORGE_DATA_DIR") {
