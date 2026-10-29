@@ -276,17 +276,22 @@ fn apply_update(app: tauri::AppHandle, path: String) -> Result<(), String> {
     let script = temp.join("zhizhi-update.bat");
     let pid = std::process::id();
     let body = format!(
-        "@echo off\r\nsetlocal\r\n:wait\r\ntasklist /FI \"PID eq {pid}\" 2>nul | find \"{pid}\" >nul\r\nif not errorlevel 1 (\r\n  timeout /t 1 /nobreak >nul\r\n  goto wait\r\n)\r\ncopy /Y \"{new}\" \"{cur}\" >nul\r\nstart \"\" \"{cur}\"\r\ndel \"%~f0\"\r\n",
+        "@echo off\r\nsetlocal\r\n:wait\r\ntasklist /FI \"PID eq {pid}\" 2>nul | find \"{pid}\" >nul\r\nif not errorlevel 1 (\r\n  ping -n 2 127.0.0.1 >nul\r\n  goto wait\r\n)\r\ncopy /Y \"{new}\" \"{cur}\" >nul\r\nstart \"\" \"{cur}\"\r\ndel \"%~f0\"\r\n",
         pid = pid,
         new = staged.display(),
         cur = current.display()
     );
     std::fs::write(&script, body).map_err(err_str)?;
     let target = script.to_string_lossy().to_string();
-    std::process::Command::new("cmd")
-        .args(["/C", "start", "/min", "", &target])
-        .spawn()
-        .map_err(err_str)?;
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        std::process::Command::new("cmd")
+            .args(["/C", &target])
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(err_str)?;
+    }
     app.exit(0);
     Ok(())
 }
@@ -297,10 +302,15 @@ fn open_url(url: String) -> Result<(), String> {
     if !url.starts_with("https://github.com/") {
         return Err("只允许打开 GitHub 链接".into());
     }
-    std::process::Command::new("cmd")
-        .args(["/C", "start", "", &url])
-        .spawn()
-        .map_err(err_str)?;
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", &url])
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(err_str)?;
+    }
     Ok(())
 }
 

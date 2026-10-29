@@ -284,7 +284,7 @@ function renderToday() {
       (due.length ? '到期复习 ' + due.length : '')
     : '今天没有安排';
   renderTodoList();
-  renderChapters();
+  renderStudyCta();
   renderStartCharts();
 }
 
@@ -336,23 +336,43 @@ function playTodoDone(list) {
   }, 780);
 }
 
-/* 右侧章节进度：按材料 + 章节显示已学 / 总数 */
-function renderChapters() {
-  const chapters = (state.overview && state.overview.chapters) || [];
-  if (!chapters.length) {
-    el('chapterHint').textContent = '';
-    el('chapterList').innerHTML = '<div class="empty">导入材料后，这里按章节显示进度</div>';
+/* 继续学习：进度 + 下一单元 + 一键跳学习页 */
+function renderStudyCta() {
+  const s = state.queue.stats || {};
+  const fresh = state.queue.fresh || [];
+  const total = s.cards || 0;
+  const learned = s.learned || 0;
+  const pct = total ? Math.round((learned / total) * 100) : 0;
+  const next = fresh[0];
+
+  if (!total) {
+    el('studyHint').textContent = '';
+    el('studyCta').innerHTML =
+      '<div class="study-cta">' +
+      '<div class="study-cta-top"><span class="study-cta-kicker">还没有知识点</span></div>' +
+      '<h3 class="study-cta-title">导入一份资料，拆成可学的单元</h3>' +
+      '<p class="study-cta-sub">网页链接、主题搜索、PDF / Word / Markdown 或直接粘贴</p>' +
+      '<div class="study-cta-foot"><span class="study-cta-left"></span>' +
+      '<button class="btn btn-primary" data-action="go-import">去导入</button></div></div>';
     return;
   }
-  el('chapterHint').textContent = chapters.length + ' 章';
-  el('chapterList').innerHTML = chapters.map((chapter) => {
-    const pct = chapter.total ? Math.round((chapter.learned / chapter.total) * 100) : 0;
-    return '<div class="chapter-row">' +
-      '<div class="chapter-text"><span class="chapter-name">' + escapeHtml(chapter.section || '未分类') +
-      '</span><span class="chapter-sub">' + escapeHtml(chapter.material) + '</span></div>' +
-      '<span class="chapter-count">' + chapter.learned + '/' + chapter.total + '</span>' +
-      '<div class="bar"><span style="width:' + pct + '%"></span></div></div>';
-  }).join('');
+
+  el('studyHint').textContent = '已学 ' + learned + ' / ' + total;
+  el('studyCta').innerHTML =
+    '<div class="study-cta">' +
+    '<div class="study-cta-top">' +
+    '<span class="study-cta-kicker">完成度</span>' +
+    '<span class="study-cta-pct">' + pct + '%</span></div>' +
+    '<div class="bar"><span style="width:' + pct + '%"></span></div>' +
+    (next
+      ? '<h3 class="study-cta-title">下一单元：' + escapeHtml(next.title) + '</h3>' +
+        '<p class="study-cta-sub">' + escapeHtml(next.materialTitle || '') +
+        (next.section ? ' · ' + escapeHtml(next.section) : '') + '</p>'
+      : '<h3 class="study-cta-title">全部知识点都学过了</h3>' +
+        '<p class="study-cta-sub">接下来靠复习和考试巩固</p>') +
+    '<div class="study-cta-foot">' +
+    '<span class="study-cta-left">' + (next ? '还剩 ' + fresh.length + ' 个待学' : '') + '</span>' +
+    '<button class="btn btn-primary" data-action="go-learn">去学习</button></div></div>';
 }
 
 /* 两张图来自后端 start_overview：到期量与记忆保持率 */
